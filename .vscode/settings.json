@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.f90": "FortranFreeForm",
+        "*.tcc": "cpp"
+    }
+}
