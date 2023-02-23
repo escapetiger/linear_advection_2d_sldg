@@ -4,6 +4,7 @@
 #include "mcm/mcm.h"
 
 using mcm::CommandLineReader;
+using mcm::mesh::Graph;
 using mcm::gerr;
 using mcm::gout;
 using mcm::gtime;
@@ -28,6 +29,20 @@ typedef union
     int ij[2];
 } Vec2i;
 
+typedef struct
+{
+    union
+    {
+        struct
+        {
+            double x;
+            double y;
+        };
+        double xy[2];
+    };
+    double w;
+} QuadPoint;
+
 // eulerian node
 typedef struct
 {
@@ -37,7 +52,7 @@ typedef struct
 // upstream node
 typedef struct
 {
-    int id;    ///< index of Eulerian element
+    int par;   ///< index of Eulerian element
     Vec2d pos; ///< position
 } NodeU;
 
@@ -45,9 +60,33 @@ typedef struct
 typedef struct
 {
     Vec2d pos; // position
-    int type;  // 0 : Grid-Grid; 1 : Grid-ElemU; 2 : ElemU-ElemU
-    int id;    // index of Eulerian element
+    int type;  // 0 : Edge-Edge; 1 : Grid-Edge; 2 : Grid-Grid;
+    int par;   // index of Eulerian element
 } POI;
+
+// segment consists of POIs
+typedef struct
+{
+    union
+    {
+        struct
+        {
+            int beg; // begin index of POI
+            int end; // end index of POI
+        };
+        int poi[2]; // index of POIs in local buffer
+    };
+} Segment;
+
+// sub-element consists of Segments
+typedef struct
+{
+    int par;               ///< index of Eulerian element
+    int nseg;              ///< number of Segments
+    int seg[4];            ///< indices of Segments
+    double x0, y0, x1, y1; ///< fast check bound
+    QuadPoint qp[4];       ///< quadrature points
+} SubElem;
 
 // eulerian edge
 typedef union
@@ -57,61 +96,51 @@ typedef union
         int beg; // begin index
         int end; // end index
     };
-    int id[2]; // index of nodes in NodeE buffer
+    int node[2]; // index of nodes in NodeE buffer
 } EdgeE;
 
-// upstream segment
-typedef struct
-{
-    union
-    {
-        struct
-        {
-            POI beg;
-            POI end;
-        };
-        POI poi[2];
-    };
-    double c_ab[6];
-} SegmentU;
-
 // upstream edge
-typedef struct
+typedef union
 {
-    union
+    struct
     {
-        struct
-        {
-            int beg; // begin index
-            int end; // end index
-        };
-        int id[2]; // index of nodes in NodeU buffer
+        int beg; // begin index
+        int end; // end index
     };
-    int nsego;
-    SegmentU sego_buf[2];
+    int node[2]; // index of nodes in NodeU buffer
 } EdgeU;
 
 // eulerian element
 typedef struct
 {
-    int nvert;       ///< number of vertices
-    int nedge;       ///< number of edges
-    int ndof;        ///< number of DoFs
-    int vert_buf[9]; ///< local vertex buffer, storing NodeE's index
-    int edge_buf[4]; ///< local edge buffer, storing EdgeE's index
-    double *udof;    ///< trial DoFs
+    int nvert;             ///< number of vertices
+    int nedge;             ///< number of edges
+    int ndof;              ///< number of DoFs
+    int npoi;              ///< number of POIs
+    int nseg;              ///< number of segments
+    int nsub;              ///< number of SubElemEs
+    int vert_buf[4];       ///< local vertex buffer, storing NodeE's index
+    int edge_buf[4];       ///< local edge buffer, storing EdgeE's index
+    POI poi_buf[32];       ///< local POIs buffer
+    Segment seg_buf[16];   ///< local Segment buffer
+    SubElem sub_buf[4];    ///< local SubElemEs buffer
+    double *udof;          ///< trial DoFs
+    double x0, y0, x1, y1; ///< fast check bound
 } ElemE;
 
 // upstream element
 typedef struct
 {
-    int nvert;            ///< number of vertices
-    int nedge;            ///< number of edges
-    int nsegi;            ///< number of inner segments
-    int vert_buf[9];      ///< vertex buffer, storing NodeU's index
-    int edge_buf[4];      ///< edge buffer, storing EdgeU's index
-    SegmentU segi_buf[8]; ///< local inner segments buffer
-    double **vcoe;        ///< coefficients of reconstructed test basis 
+    int nvert;           ///< number of vertices
+    int nedge;           ///< number of edges
+    int npoi;            ///< number of POIs
+    int nseg;            ///< number of segments
+    int nsub;            ///< number of SubElemUs
+    int vert_buf[4];     ///< vertex buffer, storing NodeU's index
+    int edge_buf[4];     ///< edge buffer, storing EdgeU's index
+    POI poi_buf[32];     ///< local POIs buffer
+    Segment seg_buf[16]; ///< local Segment buffer
+    SubElem sub_buf[4];  ///< local SubElemUs buffer
 } ElemU;
 
 #endif

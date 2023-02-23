@@ -28,6 +28,8 @@ double CalcPkBasis(const int dim, const int k, const int n, const double *x);
 /** Calculate weighted summation. */
 double CalcWeightedSum(const int n, const double *w, const double *x);
 
+
+
 /** Circulate `double` number in [xL,xR]. */
 double Circulate(double x, double xL, double xR);
 
@@ -59,17 +61,4 @@ int Circulate(int x, int xL, int xR);
  */
 void PkReconst(const int k, const double **Ap, const double *bp, double *xp);
 
-/** For three collinear points (p,q,r), check whether q locates on segment pr. */
-bool CollinearAndIntersect(const int dim, const double *p, const double *q, const double *r);
-
-/** Return orientation of three points. */
-int Orientation(const int dim, const double *p, const double *q, const double *r);
-
-
-// /** Check whether two Segment2D objects @a s1 and @a s2 intersect. */
-// bool CheckIntersect(const int dim, const Segment2D &s1, const Segment2D &s2);
-
-// /** Find intersection @p of two Segment2D objects @a s1 and @a s2.
-//  *  This method must be called after CheckIntersect(s1, s2). */
-// void FindIntersection(const int dim, const Segment2D &s1, const Segment2D &s2, double *p);
 #endif

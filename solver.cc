@@ -5,7 +5,17 @@ using mcm::DeleteVector;
 using mcm::Index2D;
 using mcm::NewMatrix;
 using mcm::NewVector;
+using mcm::kernels::FuzzyEQ;
+using mcm::kernels::FuzzyGE;
+using mcm::kernels::FuzzyGT;
+using mcm::kernels::FuzzyLE;
+using mcm::kernels::FuzzyLT;
 using mcm::kernels::FuzzyZero;
+using mcm::kernels::RealGE;
+using mcm::kernels::RealGT;
+using mcm::kernels::RealLE;
+using mcm::kernels::RealLT;
+using mcm::kernels::Square;
 
 void Solver::ReadOptions(int argc, char const *argv[])
 {
@@ -123,13 +133,17 @@ void Solver::ReadMesh()
             elem_e[io].edge_buf[1] = Nx * Gy + Index2D(ix + 1, iy, Gx, Ny);
             elem_e[io].edge_buf[2] = Index2D(ix, iy + 1, Nx, Gy);
             elem_e[io].edge_buf[3] = Nx * Gy + Index2D(ix, iy, Gx, Ny);
+            elem_e[io].x0 = node_e[elem_e[io].vert_buf[0]].pos.x;
+            elem_e[io].y0 = node_e[elem_e[io].vert_buf[0]].pos.y;
+            elem_e[io].x1 = node_e[elem_e[io].vert_buf[2]].pos.x;
+            elem_e[io].y1 = node_e[elem_e[io].vert_buf[2]].pos.y;
         }
     }
 }
 
 void Solver::ReadDG()
 {
-    int ix, iy, io, j, k;
+    int ix, iy, io, j, k, l;
     double x[2];
 
     P = order - 1;
@@ -155,7 +169,6 @@ void Solver::ReadDG()
     v_XL_YR_2D = NewVector<double>(N_dof_loc);
     v_XR_YR_2D = NewVector<double>(N_dof_loc);
     GetGaussLegendre(2, P + 1, x_GL_2D, y_GL_2D, w_GL_2D);
-
     for (j = 0; j < N_dof_loc; j++)
     {
         for (k = 0; k < N_GL_2D; k++)
@@ -191,6 +204,20 @@ void Solver::ReadDG()
         v_XL_YR_2D[j] = CalcPkBasis(2, P, j, x);
     }
 
+    mat_v_u_2D = NewMatrix<double>(N_dof_loc, N_dof_loc);
+    for (j = 0; j < N_dof_loc; j++) // i : test index
+    {
+        for (k = 0; k < N_dof_loc; k++) // j : trial index
+        {
+            mat_v_u_2D[j][k] = 0.;
+            for (l = 0; l < N_GL_2D; l++)
+            {
+                mat_v_u_2D[j][k] += v_GL_2D[j][l] * w_GL_2D[l] * v_GL_2D[k][l];
+            }
+        }
+    }
+
+    // DoFs
     for (iy = 0; iy < Ny; iy++)
     {
         for (ix = 0; ix < Nx; ix++)
@@ -198,7 +225,6 @@ void Solver::ReadDG()
             io = Index2D(ix, iy, Nx, Ny);
             elem_e[io].ndof = N_dof_loc;
             elem_e[io].udof = NewVector<double>(N_dof_loc);
-            elem_u[io].vcoe = NewMatrix<double>(N_dof_loc, N_dof_loc);
         }
     }
 
@@ -224,9 +250,8 @@ void Solver::Simulate()
         if (SetTimeStep(t))
         {
             TrackBack();
-            ReconstUShape();
-            ReconstUTest();
             Clipping();
+            SetQuadRule();
         }
 
         // evolute solution
@@ -359,76 +384,6 @@ void Solver::OutputSolution2D(const char *file)
     out.close();
 }
 
-void Solver::PrintNodeE(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    out << std::fixed << std::setprecision(8);
-    for (int i = 0; i < N_node; i++)
-    {
-        Print(node_e[i], out);
-    }
-    out.close();
-}
-
-void Solver::PrintEdgeE(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    for (int i = 0; i < N_edge; i++)
-    {
-        Print(edge_e[i], out);
-    }
-    out.close();
-}
-
-void Solver::PrintElemE(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    for (int i = 0; i < N_elem; i++)
-    {
-        out << "[ElemE " << i << "]\n";
-        Print(elem_e[i], out);
-    }
-    out.close();
-}
-
-void Solver::PrintNodeU(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    out << std::fixed << std::setprecision(8);
-    for (int i = 0; i < N_node; i++)
-    {
-        Print(node_u[i], out);
-    }
-    out.close();
-}
-
-void Solver::PrintEdgeU(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    for (int i = 0; i < N_edge; i++)
-    {
-        Print(edge_u[i], out);
-    }
-    out.close();
-}
-
-void Solver::PrintElemU(const char *file)
-{
-    std::ofstream out;
-    out.open(file);
-    for (int i = 0; i < N_elem; i++)
-    {
-        out << "[ElemU " << i << "]\n";
-        Print(elem_u[i], out);
-    }
-    out.close();
-}
-
 void Solver::Destroy()
 {
     DeleteVector<double>(x_grid, Nx + 1);
@@ -455,7 +410,6 @@ void Solver::Destroy()
     for (int i = 0; i < N_elem; i++)
     {
         DeleteVector<double>(elem_e[i].udof, N_dof_loc);
-        DeleteMatrix<double>(elem_u[i].vcoe, N_dof_loc, N_dof_loc);
     }
 
     DeleteVector<NodeE>(node_e, N_node);
@@ -531,13 +485,14 @@ void Solver::TrackBack()
     {
         node_u[i].pos.x = node_e[i].pos.x - ax * ht;
         node_u[i].pos.y = node_e[i].pos.y - ay * ht;
+
         // periodic BC
         node_u[i].pos.x = Circulate(node_u[i].pos.x, xmin, xmax);
         node_u[i].pos.y = Circulate(node_u[i].pos.y, ymin, ymax);
 
         for (jx = 0; jx < Nx + 1; jx++)
         {
-            if (node_u[i].pos.x < x_grid[jx])
+            if (FuzzyLT(node_u[i].pos.x, x_grid[jx]))
             {
                 break;
             }
@@ -545,16 +500,16 @@ void Solver::TrackBack()
 
         for (jy = 0; jy < Ny + 1; jy++)
         {
-            if (node_u[i].pos.y < y_grid[jy])
+            if (FuzzyLT(node_u[i].pos.y, y_grid[jy]))
             {
                 break;
             }
         }
 
-        node_u[i].id = Index2D(jx - 1, jy - 1, Nx, Ny);
-        if (node_u[i].id < 0 || node_u[i].id >= Nx * Ny)
+        node_u[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
+        if (node_u[i].par < 0 || node_u[i].par >= Nx * Ny)
         {
-            node_u[i].id = -1;
+            node_u[i].par = -1;
         }
     }
 
@@ -581,321 +536,676 @@ void Solver::TrackBack()
     }
 }
 
-void Solver::ReconstUShape()
-{
-    MCM_WARNING("ReconstUShape() is undefined!");
-}
-
-void Solver::ReconstUTest()
-{
-    int i, j, k;
-    double v[4];
-    double A[kMAX_N_DOF][kMAX_N_DOF];
-    for (i = 0; i < N_elem; i++)
-    {
-        // solve reconstruction problem
-        for (k = 0; k < N_dof_loc; k++)
-        {
-            A[0][k] = v_XL_YL_2D[k];
-        }
-        for (k = 0; k < N_dof_loc; k++)
-        {
-            A[1][k] = v_XR_YL_2D[k];
-        }
-        for (k = 0; k < N_dof_loc; k++)
-        {
-            A[2][k] = v_XR_YR_2D[k];
-        }
-        for (k = 0; k < N_dof_loc; k++)
-        {
-            A[3][k] = v_XL_YR_2D[k];
-        }
-
-        for (j = 0; j < N_dof_loc; j++)
-        {
-            v[0] = v_XL_YL_2D[j];
-            v[1] = v_XR_YL_2D[j];
-            v[2] = v_XR_YR_2D[j];
-            v[3] = v_XL_YR_2D[j];
-            PkReconst(P, (const double **)A, v, elem_u[i].vcoe[j]);
-        }
-    }
-}
-
 void Solver::Clipping()
 {
-    // find outer segments
-    FindOuterSegments();
-
-    // find inner segments
-    FindInnerSegments();
-}
-
-void Solver::FindOuterSegments()
-{
-    const int M = Nx * (Ny + 1);
-    int i, j, k[2], l[2], a, b;
-    double x, y, xe[2], ye[2];
-    POI p, q, r;
-    p.type = 2;
-    q.type = 2;
-    r.type = 1;
-    // horizontal edges
-    for (i = 0; i < M; i++)
-    {
-        k[0] = edge_u[i].beg;
-        k[1] = edge_u[i].end;
-        l[0] = node_u[k[0]].id;
-        l[1] = node_u[k[1]].id;
-        xe[0] = node_u[k[0]].pos.x;
-        xe[1] = node_u[k[1]].pos.x;
-        y = node_u[k[0]].pos.y;
-
-        edge_u[i].nsego = 2;
-        a = (k[0] < k[1]);
-        b = (l[0] < l[1]);
-
-        // interior
-        if (!(a ^ b))
-        {
-            for (j = 0; j < Nx + 1; j++)
-            {
-                x = x_grid[j];
-                if ((x < xe[0]) ^ (x < xe[1]))
-                {
-                    p.id = l[0];
-                    p.pos.x = xe[0];
-                    p.pos.y = y;
-                    r.id = l[0];
-                    r.pos.x = x;
-                    r.pos.y = y;
-                    edge_u[i].sego_buf[0].beg = p;
-                    edge_u[i].sego_buf[0].end = r;
-
-                    r.id = l[1];
-                    r.pos.x = x;
-                    r.pos.y = y;
-                    q.id = l[1];
-                    q.pos.x = xe[1];
-                    q.pos.y = y;
-                    edge_u[i].sego_buf[1].beg = r;
-                    edge_u[i].sego_buf[1].end = q;
-                    break;
-                }
-            }
-        }
-        // boundary
-        else
-        {
-            j = (a == 1) ? Nx : 0;
-            x = x_grid[j];
-            p.id = l[0];
-            p.pos.x = xe[0];
-            p.pos.y = y;
-            r.id = l[0];
-            r.pos.x = x;
-            r.pos.y = y;
-            edge_u[i].sego_buf[0].beg = p;
-            edge_u[i].sego_buf[0].end = r;
-
-            j = (a == 1) ? 0 : Nx;
-            x = x_grid[j];
-            r.id = l[1];
-            r.pos.x = x;
-            r.pos.y = y;
-            q.id = l[1];
-            q.pos.x = xe[1];
-            q.pos.y = y;
-            edge_u[i].sego_buf[1].beg = r;
-            edge_u[i].sego_buf[1].end = q;
-        }
-    }
-
-    // vertical edges
-    for (i = M; i < N_edge; i++)
-    {
-        k[0] = edge_u[i].beg;
-        k[1] = edge_u[i].end;
-        l[0] = node_u[k[0]].id;
-        l[1] = node_u[k[1]].id;
-        ye[0] = node_u[k[0]].pos.y;
-        ye[1] = node_u[k[1]].pos.y;
-        x = node_u[k[0]].pos.x;
-
-        edge_u[i].nsego = 2;
-        a = (k[0] < k[1]);
-        b = (l[0] < l[1]);
-
-        // interior
-        if (!(a ^ b))
-        {
-            for (j = 0; j < Ny + 1; j++)
-            {
-                y = y_grid[j];
-                if ((y < ye[0]) ^ (y < ye[1]))
-                {
-                    p.type = 2;
-                    p.id = l[0];
-                    p.pos.x = x;
-                    p.pos.y = ye[0];
-                    r.type = 1;
-                    r.id = l[0];
-                    r.pos.x = x;
-                    r.pos.y = y;
-                    edge_u[i].sego_buf[0].beg = p;
-                    edge_u[i].sego_buf[0].end = r;
-
-                    r.type = 1;
-                    r.id = l[1];
-                    r.pos.x = x;
-                    r.pos.y = y;
-                    q.type = 2;
-                    q.id = l[1];
-                    q.pos.x = x;
-                    q.pos.y = ye[1];
-                    edge_u[i].sego_buf[1].beg = r;
-                    edge_u[i].sego_buf[1].end = q;
-                    break;
-                }
-            }
-        }
-        // boundary
-        else
-        {
-            j = (a == 1) ? Ny : 0;
-            y = y_grid[j];
-            p.type = 2;
-            p.id = l[0];
-            p.pos.x = x;
-            p.pos.y = ye[0];
-            r.type = 1;
-            r.id = l[0];
-            r.pos.x = x;
-            r.pos.y = y;
-            edge_u[i].sego_buf[0].beg = p;
-            edge_u[i].sego_buf[0].end = r;
-
-            j = (a == 1) ? 0 : Nx;
-            y = y_grid[j];
-            r.type = 1;
-            r.id = l[1];
-            r.pos.x = x;
-            r.pos.y = y;
-            q.type = 2;
-            q.id = l[1];
-            q.pos.x = x;
-            q.pos.y = ye[1];
-            edge_u[i].sego_buf[1].beg = r;
-            edge_u[i].sego_buf[1].end = q;
-        }
-    }
-}
-
-void Solver::FindInnerSegments()
-{
-    int i, j[4], k[4], l[4];
-    double xe[2], ye[2];
-    POI p, q, r;
-    p.type = 1;
-    q.type = 1;
-    r.type = 0;
+    int i, j;
     for (i = 0; i < N_elem; i++)
     {
-        j[0] = elem_u[i].vert_buf[0];
-        j[1] = elem_u[i].vert_buf[1];
-        j[2] = elem_u[i].vert_buf[2];
-        j[3] = elem_u[i].vert_buf[3];
-        k[0] = node_u[j[0]].id;
-        k[1] = node_u[j[1]].id;
-        k[2] = node_u[j[2]].id;
-        k[3] = node_u[j[3]].id;
-        l[0] = elem_u[i].edge_buf[0];
-        l[1] = elem_u[i].edge_buf[1];
-        l[2] = elem_u[i].edge_buf[2];
-        l[3] = elem_u[i].edge_buf[3];
-        elem_u[i].nsegi = 8;
-
-        // left bottom
-        xe[0] = edge_u[l[0]].sego_buf[0].beg.pos.x;
-        xe[1] = edge_u[l[0]].sego_buf[0].end.pos.x;
-        ye[0] = edge_u[l[3]].sego_buf[1].end.pos.y;
-        ye[1] = edge_u[l[3]].sego_buf[1].beg.pos.y;
-        p.id = k[0];
-        r.id = k[0];
-        q.id = k[0];
-        p.pos.x = xe[1];
-        p.pos.y = ye[0];
-        r.pos.x = xe[1];
-        r.pos.y = ye[1];
-        q.pos.x = xe[0];
-        q.pos.y = ye[1];
-        elem_u[i].segi_buf[0].beg = p;
-        elem_u[i].segi_buf[0].end = r;
-        elem_u[i].segi_buf[1].beg = r;
-        elem_u[i].segi_buf[1].end = q;
-
-        // right bottom
-        xe[0] = edge_u[l[0]].sego_buf[1].beg.pos.x;
-        xe[1] = edge_u[l[0]].sego_buf[1].end.pos.x;
-        ye[0] = edge_u[l[1]].sego_buf[0].beg.pos.y;
-        ye[1] = edge_u[l[1]].sego_buf[0].end.pos.y;
-        p.id = k[1];
-        r.id = k[1];
-        q.id = k[1];
-        p.pos.x = xe[1];
-        p.pos.y = ye[1];
-        r.pos.x = xe[0];
-        r.pos.y = ye[1];
-        q.pos.x = xe[0];
-        q.pos.y = ye[0];
-        elem_u[i].segi_buf[2].beg = p;
-        elem_u[i].segi_buf[2].end = r;
-        elem_u[i].segi_buf[3].beg = r;
-        elem_u[i].segi_buf[3].end = q;
-
-        // right top
-        xe[0] = edge_u[l[1]].sego_buf[1].end.pos.x;
-        xe[1] = edge_u[l[1]].sego_buf[1].beg.pos.x;
-        ye[0] = edge_u[l[2]].sego_buf[0].beg.pos.y;
-        ye[1] = edge_u[l[2]].sego_buf[0].end.pos.y;
-        p.id = k[2];
-        r.id = k[2];
-        q.id = k[2];
-        p.pos.x = xe[0];
-        p.pos.y = ye[1];
-        r.pos.x = xe[0];
-        r.pos.y = ye[0];
-        q.pos.x = xe[1];
-        q.pos.y = ye[0];
-        elem_u[i].segi_buf[4].beg = p;
-        elem_u[i].segi_buf[4].end = r;
-        elem_u[i].segi_buf[5].beg = r;
-        elem_u[i].segi_buf[5].end = q;
-
-        // left top
-        xe[0] = edge_u[l[2]].sego_buf[1].end.pos.x;
-        xe[1] = edge_u[l[2]].sego_buf[1].beg.pos.x;
-        ye[0] = edge_u[l[3]].sego_buf[0].beg.pos.y;
-        ye[1] = edge_u[l[3]].sego_buf[0].end.pos.y;
-        p.id = k[3];
-        r.id = k[3];
-        q.id = k[3];
-        p.pos.x = xe[0];
-        p.pos.y = ye[0];
-        r.pos.x = xe[1];
-        r.pos.y = ye[0];
-        q.pos.x = xe[1];
-        q.pos.y = ye[1];
-        elem_u[i].segi_buf[6].beg = p;
-        elem_u[i].segi_buf[6].end = r;
-        elem_u[i].segi_buf[7].beg = r;
-        elem_u[i].segi_buf[7].end = q;
+        ClipElemU(&elem_u[i]);
+        ClipElemE(i, &elem_e[i], &elem_u[i]);
+        FinalizeClipElemU(&elem_u[i]);
+        for (j = 0; j < elem_u[i].nsub; j++)
+        {
+            // std::cout << "Checking: " << i << ' ' << j << '\n';
+            CheckSubElem(&elem_u[i], &elem_u[i].sub_buf[j]);
+        }
     }
+}
+
+void Solver::SetQuadRule()
+{
+    int i, j;
+    for (i = 0; i < N_elem; i++)
+    {
+        for (j = 0; j < 4; j++)
+        {
+            MakeSubQuadRuleE(&elem_e[i], &elem_e[i].sub_buf[j]);
+            MakeSubQuadRuleU(&elem_u[i], &elem_u[i].sub_buf[j]);
+        }
+    }
+}
+
+void Solver::MakeSubQuadRuleE(ElemE *elem, SubElem *sub)
+{
+    int i;
+    double dx, dy, dxy;
+    dx = fabs(sub->x1 - sub->x0);
+    dy = fabs(sub->y1 - sub->y0);
+    dxy = dx * dy;
+
+    for (i = 0; i < N_GL_2D; i++)
+    {
+        sub->qp[i].x = sub->x0 + dx * x_GL_2D[i];
+        sub->qp[i].y = sub->y0 + dy * y_GL_2D[i];
+        sub->qp[i].w = w_GL_2D[i] * dxy;
+    }
+}
+
+void Solver::MakeSubQuadRuleU(ElemU *elem, SubElem *sub)
+{
+    int i;
+    double dx, dy, dxy;
+    dx = fabs(sub->x1 - sub->x0);
+    dy = fabs(sub->y1 - sub->y0);
+    dxy = dx * dy;
+
+    for (i = 0; i < N_GL_2D; i++)
+    {
+        sub->qp[i].x = sub->x0 + dx * x_GL_2D[i];
+        sub->qp[i].y = sub->y0 + dy * y_GL_2D[i];
+        sub->qp[i].w = w_GL_2D[i] * dxy;
+    }
+}
+
+void Solver::ClipElemU(ElemU *elem)
+{
+    int i[4], j[4], k;
+    double x0, x1, y0, y1;
+    elem->npoi = 32;
+    elem->nseg = 16;
+    elem->nsub = 4;
+    i[0] = elem->edge_buf[0];
+    i[1] = elem->edge_buf[1];
+    i[2] = elem->edge_buf[2];
+    i[3] = elem->edge_buf[3];
+    j[0] = node_u[elem->vert_buf[0]].par;
+    j[1] = node_u[elem->vert_buf[1]].par;
+    j[2] = node_u[elem->vert_buf[2]].par;
+    j[3] = node_u[elem->vert_buf[3]].par;
+
+    // clip bottom edge
+    ClipHEdgeU(0, elem->poi_buf, 0, elem->seg_buf, &edge_u[i[0]]);
+    // clip right edge
+    ClipVEdgeU(4, elem->poi_buf, 2, elem->seg_buf, &edge_u[i[1]]);
+    // clip top edge
+    ClipHEdgeU(8, elem->poi_buf, 4, elem->seg_buf, &edge_u[i[2]]);
+    // clip left edge
+    ClipVEdgeU(12, elem->poi_buf, 6, elem->seg_buf, &edge_u[i[3]]);
+    // make left bottom SubElem
+    elem->sub_buf[0].par = node_u[elem->vert_buf[0]].par;
+    MakeLBSubElem(j[0], 0, 6, 16, elem->poi_buf, 8, elem->seg_buf,
+                  &elem->seg_buf[0], &elem->seg_buf[6], &elem->sub_buf[0]);
+    // make right bottom SubElem
+    elem->sub_buf[1].par = node_u[elem->vert_buf[1]].par;
+    MakeRBSubElem(j[1], 1, 2, 20, elem->poi_buf, 10, elem->seg_buf,
+                  &elem->seg_buf[1], &elem->seg_buf[2], &elem->sub_buf[1]);
+    // make right top SubElem
+    elem->sub_buf[2].par = node_u[elem->vert_buf[2]].par;
+    MakeRTSubElem(j[2], 5, 3, 24, elem->poi_buf, 12, elem->seg_buf,
+                  &elem->seg_buf[5], &elem->seg_buf[3], &elem->sub_buf[2]);
+    // make left top SubElem
+    elem->sub_buf[3].par = node_u[elem->vert_buf[3]].par;
+    MakeLTSubElem(j[3], 4, 7, 28, elem->poi_buf, 14, elem->seg_buf,
+                  &elem->seg_buf[4], &elem->seg_buf[7], &elem->sub_buf[3]);
+    // make POI and Segment orientation always counter-clockwise
+    // and store bounding box
+    for (k = 0; k < elem->nsub; k++)
+    {
+        SubElem *sub = &elem->sub_buf[k];
+
+        // make orientation counter-clockwise
+        x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
+        x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
+        if (FuzzyGT(x0, x1))
+        {
+            std::swap(elem->seg_buf[sub->seg[0]].beg, elem->seg_buf[sub->seg[0]].end);
+        }
+        y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
+        y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
+        if (FuzzyGT(y0, y1))
+        {
+            std::swap(elem->seg_buf[sub->seg[1]].beg, elem->seg_buf[sub->seg[1]].end);
+        }
+        x0 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.x;
+        x1 = elem->poi_buf[elem->seg_buf[sub->seg[2]].end].pos.x;
+        if (FuzzyLT(x0, x1))
+        {
+            std::swap(elem->seg_buf[sub->seg[2]].beg, elem->seg_buf[sub->seg[2]].end);
+        }
+        y0 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.y;
+        y1 = elem->poi_buf[elem->seg_buf[sub->seg[3]].end].pos.y;
+        if (FuzzyLT(y0, y1))
+        {
+            std::swap(elem->seg_buf[sub->seg[3]].beg, elem->seg_buf[sub->seg[3]].end);
+        }
+
+        // store two corners
+        sub->x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
+        sub->x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
+        sub->y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
+        sub->y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
+    }
+
+}
+
+void Solver::ClipHEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge)
+{
+    bool inside;
+    int i, n0, n1, m0, m1;
+    double x, y, x0, x1;
+    n0 = edge->beg;
+    n1 = edge->end;
+    m0 = node_u[n0].par;
+    m1 = node_u[n1].par;
+    x0 = node_u[n0].pos.x;
+    x1 = node_u[n1].pos.x;
+    y = node_u[n0].pos.y;
+
+    if ((n0 < n1) ^ (m0 < m1)) // boundary
+    {
+        if (n0 > n1)
+        {
+            std::swap(m0, m1);
+            std::swap(x0, x1);
+        }
+
+        poi_buf[off1].type = 0;
+        poi_buf[off1].par = m0;
+        poi_buf[off1].pos.x = x0;
+        poi_buf[off1].pos.y = y;
+        poi_buf[off1 + 1].type = 1;
+        poi_buf[off1 + 1].par = m0;
+        poi_buf[off1 + 1].pos.x = xmax;
+        poi_buf[off1 + 1].pos.y = y;
+        poi_buf[off1 + 2].type = 1;
+        poi_buf[off1 + 2].par = m1;
+        poi_buf[off1 + 2].pos.x = xmin;
+        poi_buf[off1 + 2].pos.y = y;
+        poi_buf[off1 + 3].type = 0;
+        poi_buf[off1 + 3].par = m1;
+        poi_buf[off1 + 3].pos.x = x1;
+        poi_buf[off1 + 3].pos.y = y;
+    }
+    else // interior
+    {
+        for (i = 0; i < Nx + 1; i++)
+        {
+            x = x_grid[i];
+            inside = (FuzzyLT(x, x0) ^ FuzzyLT(x, x1)) ||
+                     (FuzzyEQ(x, x0)) ||
+                     (FuzzyEQ(x, x1));
+            if (inside)
+            {
+                if (n0 > n1)
+                {
+                    std::swap(m0, m1);
+                    std::swap(x0, x1);
+                }
+
+                poi_buf[off1].type = 0;
+                poi_buf[off1].par = m0;
+                poi_buf[off1].pos.x = x0;
+                poi_buf[off1].pos.y = y;
+                poi_buf[off1 + 1].type = 1;
+                poi_buf[off1 + 1].par = m0;
+                poi_buf[off1 + 1].pos.x = x;
+                poi_buf[off1 + 1].pos.y = y;
+                poi_buf[off1 + 2].type = 1;
+                poi_buf[off1 + 2].par = m1;
+                poi_buf[off1 + 2].pos.x = x;
+                poi_buf[off1 + 2].pos.y = y;
+                poi_buf[off1 + 3].type = 0;
+                poi_buf[off1 + 3].par = m1;
+                poi_buf[off1 + 3].pos.x = x1;
+                poi_buf[off1 + 3].pos.y = y;
+
+                break;
+            }
+        }
+    }
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+}
+
+void Solver::ClipVEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge)
+{
+    bool inside;
+    int i, n0, n1, m0, m1;
+    double x, y, y0, y1;
+    n0 = edge->beg;
+    n1 = edge->end;
+    m0 = node_u[n0].par;
+    m1 = node_u[n1].par;
+    y0 = node_u[n0].pos.y;
+    y1 = node_u[n1].pos.y;
+    x = node_u[n0].pos.x;
+    if ((n0 < n1) ^ (m0 < m1)) // boundary
+    {
+        if (n0 > n1)
+        {
+            std::swap(m0, m1);
+            std::swap(y0, y1);
+        }
+
+        poi_buf[off1].type = 0;
+        poi_buf[off1].par = m0;
+        poi_buf[off1].pos.x = x;
+        poi_buf[off1].pos.y = y0;
+        poi_buf[off1 + 1].type = 1;
+        poi_buf[off1 + 1].par = m0;
+        poi_buf[off1 + 1].pos.x = x;
+        poi_buf[off1 + 1].pos.y = ymax;
+        poi_buf[off1 + 2].type = 1;
+        poi_buf[off1 + 2].par = m1;
+        poi_buf[off1 + 2].pos.x = x;
+        poi_buf[off1 + 2].pos.y = ymin;
+        poi_buf[off1 + 3].type = 0;
+        poi_buf[off1 + 3].par = m1;
+        poi_buf[off1 + 3].pos.x = x;
+        poi_buf[off1 + 3].pos.y = y1;
+    }
+    else // interior
+    {
+        for (i = 0; i < Ny + 1; i++)
+        {
+            y = y_grid[i];
+            inside = (FuzzyLT(y, y0) ^ FuzzyLT(y, y1)) ||
+                     (FuzzyEQ(y, y0)) ||
+                     (FuzzyEQ(y, y1));
+            if (inside)
+            {
+                if (n0 > n1)
+                {
+                    std::swap(m0, m1);
+                    std::swap(y0, y1);
+                }
+                poi_buf[off1].type = 0;
+                poi_buf[off1].par = m0;
+                poi_buf[off1].pos.x = x;
+                poi_buf[off1].pos.y = y0;
+                poi_buf[off1 + 1].type = 1;
+                poi_buf[off1 + 1].par = m0;
+                poi_buf[off1 + 1].pos.x = x;
+                poi_buf[off1 + 1].pos.y = y;
+                poi_buf[off1 + 2].type = 1;
+                poi_buf[off1 + 2].par = m1;
+                poi_buf[off1 + 2].pos.x = x;
+                poi_buf[off1 + 2].pos.y = y;
+                poi_buf[off1 + 3].type = 0;
+                poi_buf[off1 + 3].par = m1;
+                poi_buf[off1 + 3].pos.x = x;
+                poi_buf[off1 + 3].pos.y = y1;
+                break;
+            }
+        }
+    }
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+}
+
+void Solver::MakeLBSubElem(int par, int ib, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                           Segment *seg_b, Segment *seg_l, SubElem *sub)
+{
+    double x0, x1, y0, y1;
+    x0 = poi_buf[seg_b->beg].pos.x;
+    x1 = poi_buf[seg_b->end].pos.x;
+    y0 = poi_buf[seg_l->beg].pos.y;
+    y1 = poi_buf[seg_l->end].pos.y;
+    if (FuzzyGT(x0, x1))
+    {
+        std::swap(x0, x1);
+    }
+    if (FuzzyGT(y0, y1))
+    {
+        std::swap(y0, y1);
+    }
+    poi_buf[off1].type = 1;
+    poi_buf[off1].par = par;
+    poi_buf[off1].pos.x = x0;
+    poi_buf[off1].pos.y = y1;
+    poi_buf[off1 + 1].type = 2;
+    poi_buf[off1 + 1].par = par;
+    poi_buf[off1 + 1].pos.x = x1;
+    poi_buf[off1 + 1].pos.y = y1;
+    poi_buf[off1 + 2].type = 2;
+    poi_buf[off1 + 2].par = par;
+    poi_buf[off1 + 2].pos.x = x1;
+    poi_buf[off1 + 2].pos.y = y1;
+    poi_buf[off1 + 3].type = 1;
+    poi_buf[off1 + 3].par = par;
+    poi_buf[off1 + 3].pos.x = x1;
+    poi_buf[off1 + 3].pos.y = y0;
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+    sub->nseg = 4;
+    sub->seg[0] = ib;
+    sub->seg[1] = off2 + 1;
+    sub->seg[2] = off2;
+    sub->seg[3] = il;
+}
+
+void Solver::MakeRBSubElem(int par, int ib, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                           Segment *seg_b, Segment *seg_r, SubElem *sub)
+{
+    double x0, x1, y0, y1;
+    x0 = poi_buf[seg_b->beg].pos.x;
+    x1 = poi_buf[seg_b->end].pos.x;
+    y0 = poi_buf[seg_r->beg].pos.y;
+    y1 = poi_buf[seg_r->end].pos.y;
+    if (FuzzyGT(x0, x1))
+    {
+        std::swap(x0, x1);
+    }
+    if (FuzzyGT(y0, y1))
+    {
+        std::swap(y0, y1);
+    }
+    poi_buf[off1].type = 1;
+    poi_buf[off1].par = par;
+    poi_buf[off1].pos.x = x1;
+    poi_buf[off1].pos.y = y1;
+    poi_buf[off1 + 1].type = 2;
+    poi_buf[off1 + 1].par = par;
+    poi_buf[off1 + 1].pos.x = x0;
+    poi_buf[off1 + 1].pos.y = y1;
+    poi_buf[off1 + 2].type = 2;
+    poi_buf[off1 + 2].par = par;
+    poi_buf[off1 + 2].pos.x = x0;
+    poi_buf[off1 + 2].pos.y = y1;
+    poi_buf[off1 + 3].type = 1;
+    poi_buf[off1 + 3].par = par;
+    poi_buf[off1 + 3].pos.x = x0;
+    poi_buf[off1 + 3].pos.y = y0;
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+    sub->nseg = 4;
+    sub->seg[0] = ib;
+    sub->seg[1] = ir;
+    sub->seg[2] = off2;
+    sub->seg[3] = off2 + 1;
+}
+
+void Solver::MakeRTSubElem(int par, int it, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                           Segment *seg_t, Segment *seg_r, SubElem *sub)
+{
+    double x0, x1, y0, y1;
+    x0 = poi_buf[seg_t->beg].pos.x;
+    x1 = poi_buf[seg_t->end].pos.x;
+    y0 = poi_buf[seg_r->beg].pos.y;
+    y1 = poi_buf[seg_r->end].pos.y;
+    if (FuzzyGT(x0, x1))
+    {
+        std::swap(x0, x1);
+    }
+    if (FuzzyGT(y0, y1))
+    {
+        std::swap(y0, y1);
+    }
+    poi_buf[off1].type = 1;
+    poi_buf[off1].par = par;
+    poi_buf[off1].pos.x = x1;
+    poi_buf[off1].pos.y = y0;
+    poi_buf[off1 + 1].type = 2;
+    poi_buf[off1 + 1].par = par;
+    poi_buf[off1 + 1].pos.x = x0;
+    poi_buf[off1 + 1].pos.y = y0;
+    poi_buf[off1 + 2].type = 2;
+    poi_buf[off1 + 2].par = par;
+    poi_buf[off1 + 2].pos.x = x0;
+    poi_buf[off1 + 2].pos.y = y0;
+    poi_buf[off1 + 3].type = 1;
+    poi_buf[off1 + 3].par = par;
+    poi_buf[off1 + 3].pos.x = x0;
+    poi_buf[off1 + 3].pos.y = y1;
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+    sub->nseg = 4;
+    sub->seg[0] = off2;
+    sub->seg[1] = ir;
+    sub->seg[2] = it;
+    sub->seg[3] = off2 + 1;
+}
+
+void Solver::MakeLTSubElem(int par, int it, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                           Segment *seg_t, Segment *seg_l, SubElem *sub)
+{
+    double x0, x1, y0, y1;
+    x0 = poi_buf[seg_t->beg].pos.x;
+    x1 = poi_buf[seg_t->end].pos.x;
+    y0 = poi_buf[seg_l->beg].pos.y;
+    y1 = poi_buf[seg_l->end].pos.y;
+    if (x0 > x1)
+    {
+        std::swap(x0, x1);
+    }
+    if (y0 > y1)
+    {
+        std::swap(y0, y1);
+    }
+    poi_buf[off1].type = 1;
+    poi_buf[off1].par = par;
+    poi_buf[off1].pos.x = x0;
+    poi_buf[off1].pos.y = y0;
+    poi_buf[off1 + 1].type = 2;
+    poi_buf[off1 + 1].par = par;
+    poi_buf[off1 + 1].pos.x = x1;
+    poi_buf[off1 + 1].pos.y = y0;
+    poi_buf[off1 + 2].type = 2;
+    poi_buf[off1 + 2].par = par;
+    poi_buf[off1 + 2].pos.x = x1;
+    poi_buf[off1 + 2].pos.y = y0;
+    poi_buf[off1 + 3].type = 1;
+    poi_buf[off1 + 3].par = par;
+    poi_buf[off1 + 3].pos.x = x1;
+    poi_buf[off1 + 3].pos.y = y1;
+    seg_buf[off2].beg = off1;
+    seg_buf[off2].end = off1 + 1;
+    seg_buf[off2 + 1].beg = off1 + 3;
+    seg_buf[off2 + 1].end = off1 + 2;
+    sub->nseg = 4;
+    sub->seg[0] = off2;
+    sub->seg[1] = off2 + 1;
+    sub->seg[2] = it;
+    sub->seg[3] = il;
+}
+
+void Solver::ClipElemE(int par, ElemE *elem, ElemU *elu)
+{
+    bool inside;
+    int i;
+    double x, y, x0, x1, y0, y1;
+    x0 = node_e[elem->vert_buf[0]].pos.x;
+    x1 = node_e[elem->vert_buf[2]].pos.x;
+    y0 = node_e[elem->vert_buf[0]].pos.y;
+    y1 = node_e[elem->vert_buf[2]].pos.y;
+    elem->npoi = elu->npoi;
+    elem->nseg = elu->nseg;
+    elem->nsub = elu->nsub;
+    for (i = 0; i < elem->npoi; i++)
+    {
+        x = elu->poi_buf[i].pos.x + ax * ht;
+        y = elu->poi_buf[i].pos.y + ax * ht;
+        x = Circulate(x, xmin, xmax);
+        y = Circulate(y, ymin, ymax);
+        inside = (RealLT(x, x0) ^ RealLT(x, x1)) ||
+                 (FuzzyEQ(x, x0)) ||
+                 (FuzzyEQ(x, x1));
+        if (!inside)
+        {
+            if (FuzzyEQ(x, xmax))
+            {
+                x = xmin;
+            }
+            else if (FuzzyEQ(x, xmin))
+            {
+                x = xmax;
+            }
+        }
+        inside = (RealLT(y, y0) ^ RealLT(y, y1)) ||
+                 (FuzzyEQ(y, y0)) ||
+                 (FuzzyEQ(y, y1));
+        if (!inside)
+        {
+            if (FuzzyEQ(y, ymax))
+            {
+                y = ymin;
+            }
+            else if (FuzzyEQ(y, ymin))
+            {
+                y = ymax;
+            }
+        }
+        elem->poi_buf[i].par = i;
+        elem->poi_buf[i].type = elu->poi_buf[i].type;
+        elem->poi_buf[i].pos.x = x;
+        elem->poi_buf[i].pos.y = y;
+    }
+    for (i = 0; i < elem->nseg; i++)
+    {
+        elem->seg_buf[i] = elu->seg_buf[i];
+    }
+    for (i = 0; i < elem->nsub; i++)
+    {
+        SubElem *sub = &elem->sub_buf[i];
+        (*sub) = elu->sub_buf[i];
+        sub->par = par;
+        sub->x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
+        sub->x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
+        sub->y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
+        sub->y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
+    }
+}
+
+void Solver::FinalizeClipElemU(ElemU *elem)
+{
+    // TODO deal with overlap situation.
+    bool overlap = false;
+    int i, par;
+    for (i = 0; i < elem->nsub; i++)
+    {
+        par = elem->sub_buf[i].par;
+        if (CheckOverlap(elem, &elem_e[par]))
+        {
+            overlap = true;
+            break;
+        }
+    }
+    // when overlap == true, fix all SubElem.par
+    if (overlap)
+    {
+        for (i = 0; i < elem->nsub; i++)
+        {
+            elem->sub_buf[i].par = par;
+        }
+    }
+}
+
+void Solver::CheckSubElem(ElemU *elem, SubElem *sub)
+{
+    MCM_ASSERT(sub->nseg == 4, "sub->nseg != 4");
+    double x1, y1, x2, y2, x3, y3, x4, y4;
+    double cx, cy;
+    double dd1, dd2, dd3, dd4;
+
+    x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
+    y1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.y;
+    x2 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.x;
+    y2 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
+    x3 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.x;
+    y3 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.y;
+    x4 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.x;
+    y4 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.y;
+
+    cx = (x1 + x2 + x3 + x4) / 4.;
+    cy = (y1 + y2 + y3 + y4) / 4.;
+
+    dd1 = Square(cx - x1) + Square(cy - y1);
+    dd2 = Square(cx - x2) + Square(cy - y2);
+    dd3 = Square(cx - x3) + Square(cy - y3);
+    dd4 = Square(cx - x4) + Square(cy - y4);
+    // MCM_CONTRACT_VAR(dd1);
+    // MCM_CONTRACT_VAR(dd2);
+    // MCM_CONTRACT_VAR(dd3);
+    // MCM_CONTRACT_VAR(dd4);
+    MCM_VERIFY(FuzzyEQ(dd1, dd2) && FuzzyEQ(dd1, dd3) && FuzzyEQ(dd1, dd4),
+               "SubElem is not a Rectangle: " << std::fixed << std::setprecision(4)
+                                              << x1 << ' ' << y1 << ' '
+                                              << x2 << ' ' << y2 << ' '
+                                              << x3 << ' ' << y3 << ' '
+                                              << x4 << ' ' << y4 << '\n');
+    MCM_ASSERT(FuzzyEQ(cx, x1) && FuzzyEQ(cx, x2) && FuzzyEQ(cx, x3) && FuzzyEQ(cx, x4), "SubElem is a point");
+}
+
+bool Solver::CheckOverlap(ElemU *eu, ElemE *ee)
+{
+    int i;
+    for (i = 0; i < 4; i++)
+    {
+        if (!FuzzyEQ(node_u[eu->vert_buf[i]].pos.x, node_e[ee->vert_buf[i]].pos.x))
+        {
+            return false;
+        }
+        if (!FuzzyEQ(node_u[eu->vert_buf[i]].pos.y, node_e[ee->vert_buf[i]].pos.y))
+        {
+            return false;
+        }
+    }
+    return true;
 }
 
 void Solver::Assemble()
 {
-    MCM_WARNING("Assemble() is undefined!");
+    int i, j, k, l, m, jg;
+    double u, v, udof, mass;
+    QuadPoint *qe, *qu;
+    for (i = 0; i < N_elem; i++)
+    {
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            jg = Index2D(i, j, N_elem, N_dof_loc);
+            mass = hx * hy * mat_v_u_2D[j][j];
+            for (l = 0; l < elem_e[i].nsub; l++)
+            {
+                for (m = 0; m < N_GL_2D; m++)
+                {
+                    qe = &elem_e[i].sub_buf[l].qp[m];
+                    qu = &elem_u[i].sub_buf[l].qp[m];
+                    u = 0.;
+                    v = CalcElemEPkBasis(j, &elem_e[i], qe->xy);
+                    for (k = 0; k < N_dof_loc; k++)
+                    {
+                        udof = elem_e[elem_u[i].sub_buf[l].par].udof[k];
+                        u += udof * CalcElemUPkBasis(k, &elem_u[i], &elem_u[i].sub_buf[l], qu->xy);
+                    }
+                    std::cout << std::fixed << std::setprecision(8);
+                    std::cout << i << ' ' << j << ' ' << u << ' ' << v << ' ' << qe->w << '\n';
+                    U_RHS[jg] += qe->w * u * v / mass;
+                }
+            }
+        }
+    }
+}
+
+double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
+{
+    bool outside = (FuzzyLT(x[0], elem->x0)) || (FuzzyGT(x[0], elem->x1)) ||
+                   (FuzzyLT(x[1], elem->y0)) || (FuzzyGT(x[1], elem->y1));
+    bool interface = (FuzzyEQ(x[0], elem->x0)) || (FuzzyEQ(x[0], elem->x1)) ||
+                     (FuzzyEQ(x[1], elem->y0)) || (FuzzyEQ(x[1], elem->y1));
+    if (outside)
+    {
+        return 0.;
+    }
+
+    double w = (interface) ? 1. : 1.;
+    double xx[2] = {(x[0] - elem->x0) / hx, (x[1] - elem->y0) / hy};
+
+    return w * CalcPkBasis(2, P, k, xx);
+}
+
+double Solver::CalcElemUPkBasis(const int k, ElemU *elem, SubElem *sub, double *x)
+{
+    return CalcElemEPkBasis(k, &elem_e[sub->par], x);
 }
 
 void Solver::Step()
@@ -907,6 +1217,7 @@ void Solver::Step()
     CopyL2G(N_dof_glo, U_tn);
 
     Assemble();
+
     CopyG2G(N_dof_glo, U_RHS, U_tn1);
 
     CopyG2L(N_dof_glo, U_tn1);
@@ -928,7 +1239,7 @@ void Solver::CopyL2G(const int size, double *v)
     }
 }
 
-void Solver::CopyG2L(const int size, const double *v)
+void Solver::CopyG2L(int size, const double *v)
 {
     for (int i = 0; i < N_elem; i++)
     {
@@ -939,96 +1250,7 @@ void Solver::CopyG2L(const int size, const double *v)
     }
 }
 
-void Solver::CopyG2G(const int size, const double *v1, double *v2)
+void Solver::CopyG2G(int size, const double *v1, double *v2)
 {
     std::copy(v1, v1 + size, v2);
-}
-
-void Solver::Print(NodeE &node, std::ostream &out)
-{
-    out << ' ' << std::setw(12) << node.pos.x
-        << ' ' << std::setw(12) << node.pos.y;
-    out << '\n';
-}
-
-void Solver::Print(EdgeE &edge, std::ostream &out)
-{
-    out << ' ' << std::setw(6) << edge.beg
-        << ' ' << std::setw(6) << edge.end;
-    out << '\n';
-}
-
-void Solver::Print(ElemE &elem, std::ostream &out)
-{
-    int i;
-    out << "vertices:\n";
-    for (i = 0; i < 4; i++)
-    {
-        out << ' ' << std::setw(6) << elem.vert_buf[i];
-    }
-    out << '\n';
-    out << "edges:\n";
-    for (i = 0; i < 4; i++)
-    {
-        out << ' ' << std::setw(6) << elem.edge_buf[i];
-    }
-    out << '\n';
-    out << "DoFs:\n";
-    out << std::fixed;
-    for (i = 0; i < elem.ndof; i++)
-    {
-        out << std::setw(12) << std::setprecision(8) << elem.udof[i] << '\n';
-    }
-    out << '\n';
-}
-
-void Solver::Print(NodeU &node, std::ostream &out)
-{
-    out << ' ' << std::setw(6) << node.id
-        << ' ' << std::setw(12) << node.pos.x
-        << ' ' << std::setw(12) << node.pos.y;
-    out << '\n';
-}
-
-void Solver::Print(EdgeU &edge, std::ostream &out)
-{
-    out << ' ' << std::setw(6) << edge.beg
-        << ' ' << std::setw(6) << edge.end
-        << ' ' << std::setw(6) << edge.nsego
-        << ' ' << std::setw(6) << edge.sego_buf[0].beg.pos.x
-        << ' ' << std::setw(6) << edge.sego_buf[0].beg.pos.y
-        << ' ' << std::setw(6) << edge.sego_buf[0].end.pos.x
-        << ' ' << std::setw(6) << edge.sego_buf[0].end.pos.y
-        << ' ' << std::setw(6) << edge.sego_buf[1].beg.pos.x
-        << ' ' << std::setw(6) << edge.sego_buf[1].beg.pos.y
-        << ' ' << std::setw(6) << edge.sego_buf[1].end.pos.x
-        << ' ' << std::setw(6) << edge.sego_buf[1].end.pos.y;
-    out << '\n';
-}
-
-void Solver::Print(ElemU &elem, std::ostream &out)
-{
-    int i;
-    out << "vertices:\n";
-    for (i = 0; i < 4; i++)
-    {
-        out <<  ' ' << std::setw(6) << elem.vert_buf[i];
-    }
-    out << '\n';
-    out << "edges:\n";
-    for (i = 0; i < 4; i++)
-    {
-        out << ' ' << std::setw(6) << elem.edge_buf[i];
-    }
-    out << '\n';
-    out << "inner segments:\n";
-    for (i = 0; i < elem.nsegi; i++)
-    {
-        out << ' ' << std::setw(6) << elem.segi_buf[i].beg.pos.x
-            << ' ' << std::setw(6) << elem.segi_buf[i].beg.pos.y
-            << ' ' << std::setw(6) << elem.segi_buf[i].end.pos.x
-            << ' ' << std::setw(6) << elem.segi_buf[i].end.pos.y;
-        out << '\n';
-    }
-    out << '\n';
 }

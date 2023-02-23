@@ -54,17 +54,18 @@ public:
     double *v_XR_YL_2D;  ///< 2D basis values at (1.0, 0.0)
     double *v_XL_YR_2D;  ///< 2D basis values at (0.0, 1.0)
     double *v_XR_YR_2D;  ///< 2D basis values at (1.0, 1.0)
+    double **mat_v_u_2D; ///< DG matrix: v*u
 
     // local data structures
     int N_node;    ///< number of nodes
     int N_edge;    ///< number of edges
     int N_elem;    ///< number of elements
-    NodeE *node_e; ///< Eulerian node buffer
-    NodeU *node_u; ///< Upstream node buffer
-    EdgeE *edge_e; ///< Eulerian edge buffer
-    EdgeU *edge_u; ///< Upstream edge buffer
-    ElemE *elem_e; ///< Eulerian element buffer
-    ElemU *elem_u; ///< Upstream element buffer
+    NodeE *node_e; ///< global Eulerian node buffer
+    NodeU *node_u; ///< global Upstream node buffer
+    EdgeE *edge_e; ///< global Eulerian edge buffer
+    EdgeU *edge_u; ///< global Upstream edge buffer
+    ElemE *elem_e; ///< global Eulerian element buffer
+    ElemU *elem_u; ///< global Upstream element buffer
 
     // global algebraic elements: vectors and matrices
     int N_dof_glo; ///< number of global degrees freedom
@@ -89,12 +90,6 @@ public:
     void GetResidual(const int nerr, double *e);
     void OutputResidual(const char *file);
     void OutputSolution2D(const char *file);
-    void PrintNodeE(const char *file);
-    void PrintEdgeE(const char *file);
-    void PrintElemE(const char *file);
-    void PrintNodeU(const char *file);
-    void PrintEdgeU(const char *file);
-    void PrintElemU(const char *file);
     void Destroy();
 
 private:
@@ -103,23 +98,33 @@ private:
     void Project();
     int SetTimeStep(double t);
     void TrackBack();
-    void ReconstUShape();
-    void ReconstUTest();
     void Assemble();
     void Clipping();
-    void FindOuterSegments();
-    void FindInnerSegments();
+    void ClipElemU(ElemU *elem);
+    void ClipElemE(int par, ElemE *elem, ElemU *eu);
+    void ClipHEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge);
+    void ClipVEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge);
+    void MakeLBSubElem(int par, int ib, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                       Segment *seg_b, Segment *seg_l, SubElem *sub);
+    void MakeRBSubElem(int par, int ib, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                       Segment *seg_b, Segment *seg_r, SubElem *sub);
+    void MakeRTSubElem(int par, int it, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                       Segment *seg_t, Segment *seg_r, SubElem *sub);
+    void MakeLTSubElem(int par, int it, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
+                       Segment *seg_t, Segment *seg_l, SubElem *sub);
+    void FinalizeClipElemU(ElemU *elem);
+    void CheckSubElem(ElemU *elem, SubElem *sub);
+    bool CheckOverlap(ElemU *eu, ElemE *ee);
+    void SetQuadRule();
+    void MakeSubQuadRuleE(ElemE *elem, SubElem *sub);
+    void MakeSubQuadRuleU(ElemU *elem, SubElem *sub);
+    double CalcElemEPkBasis(const int k, ElemE *elem, double *x);
+    double CalcElemUPkBasis(const int k, ElemU *elem, SubElem *sub, double *x);
     void Step();
-    void SetZero(const int size, double *v);
-    void CopyL2G(const int size, double *v);
-    void CopyG2L(const int size, const double *v);
-    void CopyG2G(const int size, const double *v1, double *v2);
-    void Print(NodeE &node, std::ostream &out = std::cout);
-    void Print(EdgeE &edge, std::ostream &out = std::cout);
-    void Print(ElemE &elem, std::ostream &out = std::cout);
-    void Print(NodeU &node, std::ostream &out = std::cout);
-    void Print(EdgeU &edge, std::ostream &out = std::cout);
-    void Print(ElemU &elem, std::ostream &out = std::cout);
+    void SetZero(int size, double *v);
+    void CopyL2G(int size, double *v);
+    void CopyG2L(int size, const double *v);
+    void CopyG2G(int size, const double *v1, double *v2);
 };
 
 #endif
