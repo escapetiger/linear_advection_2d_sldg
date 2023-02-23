@@ -21,11 +21,7 @@ void Debug(int argc, char const *argv[])
     const char *edge_u_file = "data/edge_u.dat";
     const char *elem_e_file = "data/elem_e.dat";
     const char *elem_u_file = "data/elem_u.dat";
-    const char *poi_buf_e_file = "data/poi_buf_e.dat";
-    const char *seg_buf_e_file = "data/seg_buf_e.dat";
     const char *sub_buf_e_file = "data/sub_buf_e.dat";
-    const char *poi_buf_u_file = "data/poi_buf_u.dat";
-    const char *seg_buf_u_file = "data/seg_buf_u.dat";
     const char *sub_buf_u_file = "data/sub_buf_u.dat";
     const char *quad_file = "data/quad.dat";
 
@@ -72,11 +68,7 @@ void Debug(int argc, char const *argv[])
     io.PrintEdgeU(edge_u_file);
     io.PrintElemE(elem_e_file);
     io.PrintElemU(elem_u_file);
-    io.PrintPOIBufE(poi_buf_e_file);
-    io.PrintSegmentBufE(seg_buf_e_file);
     io.PrintSubElemBufE(sub_buf_e_file);
-    io.PrintPOIBufU(poi_buf_u_file);
-    io.PrintSegmentBufU(seg_buf_u_file);
     io.PrintSubElemBufU(sub_buf_u_file);
     io.PrintQuadRule(quad_file);
     std::cout << "===== Postprocess: finished ====" << std::endl;
@@ -104,12 +96,12 @@ void ErrorOrder()
         opt[i].xmin = 0.;           ///< minimum value of y
         opt[i].ymax = 1.;           ///< maximum value of y
         opt[i].tmax = 1.0;          ///< final simulation time
-        opt[i].CFL = 2.8;            ///< CFL number
+        opt[i].CFL = 3.0;            ///< CFL number
         opt[i].ax = 1.;             ///< wave speed in x
         opt[i].ay = 1.;             ///< wave speed in y
         opt[i].Nx = 10 * pow(2, i); ///< size of x-partition
         opt[i].Ny = opt[i].Nx;      ///< size of y-partition
-        opt[i].order = 2;           ///< approximation order of numerical scheme
+        opt[i].order = 1;           ///< approximation order of numerical scheme
     }
 
     for (int i = 0; i < N; i++)

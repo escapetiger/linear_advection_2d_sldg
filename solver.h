@@ -4,7 +4,7 @@
 #include "globals.h"
 #include "kernels.h"
 
-static constexpr int kMAX_N_DOF = 10;
+static constexpr int kMAX_N_DOF = 25;
 static constexpr int kMAX_N_GL_1D = 6;
 static constexpr int kMAX_N_GL_2D = 36;
 
@@ -117,20 +117,8 @@ private:
     void Assemble();
     void Clipping();
     void ClipElemU(ElemU *elem);
-    void ClipElemE(int par, ElemE *elem, ElemU *eu);
-    void ClipHEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge);
-    void ClipVEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge);
-    void MakeLBSubElem(int par, int ib, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                       Segment *seg_b, Segment *seg_l, SubElem *sub);
-    void MakeRBSubElem(int par, int ib, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                       Segment *seg_b, Segment *seg_r, SubElem *sub);
-    void MakeRTSubElem(int par, int it, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                       Segment *seg_t, Segment *seg_r, SubElem *sub);
-    void MakeLTSubElem(int par, int it, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                       Segment *seg_t, Segment *seg_l, SubElem *sub);
-    void FinalizeClipElemU(ElemU *elem);
-    void CheckSubElem(ElemU *elem, SubElem *sub);
-    bool CheckOverlap(ElemU *eu, ElemE *ee);
+    void ClipElemE(ElemE *elem, ElemU *eu);
+    void FinalizeClip(int par_e, ElemE *elem, ElemU *eu);
     void SetQuadRule();
     void MakeSubQuadRuleE(ElemE *elem, SubElem *sub);
     void MakeSubQuadRuleU(ElemU *elem, SubElem *sub);

@@ -56,38 +56,6 @@ typedef struct
     Vec2d pos; ///< position
 } NodeU;
 
-// intersection point
-typedef struct
-{
-    Vec2d pos; // position
-    int type;  // 0 : Edge-Edge; 1 : Grid-Edge; 2 : Grid-Grid;
-    int par;   // index of Eulerian element
-} POI;
-
-// segment consists of POIs
-typedef struct
-{
-    union
-    {
-        struct
-        {
-            int beg; // begin index of POI
-            int end; // end index of POI
-        };
-        int poi[2]; // index of POIs in local buffer
-    };
-} Segment;
-
-// sub-element consists of Segments
-typedef struct
-{
-    int par;               ///< index of Eulerian element
-    int nseg;              ///< number of Segments
-    int seg[4];            ///< indices of Segments
-    double x0, y0, x1, y1; ///< fast check bound
-    QuadPoint qp[16];      ///< quadrature points
-} SubElem;
-
 // eulerian edge
 typedef union
 {
@@ -110,37 +78,42 @@ typedef union
     int node[2]; // index of nodes in NodeU buffer
 } EdgeU;
 
+// sub-element consists of Segments
+typedef struct
+{
+    int par;          ///< index of Eulerian element
+    Vec2d p0, p1;     ///< p0: left bottom; p1: right top
+    QuadPoint qp[25]; ///< quadrature points
+} SubElem;
+
 // eulerian element
 typedef struct
 {
-    int nvert;             ///< number of vertices
-    int nedge;             ///< number of edges
-    int ndof;              ///< number of DoFs
-    int npoi;              ///< number of POIs
-    int nseg;              ///< number of segments
-    int nsub;              ///< number of SubElemEs
-    int vert_buf[4];       ///< local vertex buffer, storing NodeE's index
-    int edge_buf[4];       ///< local edge buffer, storing EdgeE's index
-    POI poi_buf[32];       ///< local POIs buffer
-    Segment seg_buf[16];   ///< local Segment buffer
-    SubElem sub_buf[4];    ///< local SubElemEs buffer
-    double *udof;          ///< trial DoFs
-    double x0, y0, x1, y1; ///< fast check bound
+    int nvert;          ///< number of vertices
+    int nedge;          ///< number of edges
+    int ndof;           ///< number of DoFs
+    int nsub;           ///< number of SubElemEs
+    int vert_buf[4];    ///< local vertex buffer, storing NodeE's index
+    int edge_buf[4];    ///< local edge buffer, storing EdgeE's index
+    SubElem sub_buf[4]; ///< local SubElem buffer
+    double *udof;       ///< trial DoFs
+    Vec2d p0;           ///< left bottom
+    Vec2d p1;           ///< right top
+    Vec2d poi;          ///< local position of inner POI
 } ElemE;
 
 // upstream element
 typedef struct
 {
-    int nvert;           ///< number of vertices
-    int nedge;           ///< number of edges
-    int npoi;            ///< number of POIs
-    int nseg;            ///< number of segments
-    int nsub;            ///< number of SubElemUs
-    int vert_buf[4];     ///< vertex buffer, storing NodeU's index
-    int edge_buf[4];     ///< edge buffer, storing EdgeU's index
-    POI poi_buf[32];     ///< local POIs buffer
-    Segment seg_buf[16]; ///< local Segment buffer
-    SubElem sub_buf[4];  ///< local SubElemUs buffer
+    int nvert;          ///< number of vertices
+    int nedge;          ///< number of edges
+    int nsub;           ///< number of SubElemUs
+    int vert_buf[4];    ///< vertex buffer, storing NodeU's index
+    int edge_buf[4];    ///< edge buffer, storing EdgeU's index
+    SubElem sub_buf[4]; ///< local SubElem buffer
+    Vec2d p0;           ///< left bottom
+    Vec2d p1;           ///< right top
+    Vec2d poi;          ///< local position of inner POI
 } ElemU;
 
 #endif

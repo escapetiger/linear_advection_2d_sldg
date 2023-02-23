@@ -148,10 +148,10 @@ void Solver::ReadMesh()
             elem_e[io].edge_buf[1] = Nx * Gy + Index2D(ix + 1, iy, Gx, Ny);
             elem_e[io].edge_buf[2] = Index2D(ix, iy + 1, Nx, Gy);
             elem_e[io].edge_buf[3] = Nx * Gy + Index2D(ix, iy, Gx, Ny);
-            elem_e[io].x0 = node_e[elem_e[io].vert_buf[0]].pos.x;
-            elem_e[io].y0 = node_e[elem_e[io].vert_buf[0]].pos.y;
-            elem_e[io].x1 = node_e[elem_e[io].vert_buf[2]].pos.x;
-            elem_e[io].y1 = node_e[elem_e[io].vert_buf[2]].pos.y;
+            elem_e[io].p0.x = node_e[elem_e[io].vert_buf[0]].pos.x;
+            elem_e[io].p0.y = node_e[elem_e[io].vert_buf[0]].pos.y;
+            elem_e[io].p1.x = node_e[elem_e[io].vert_buf[2]].pos.x;
+            elem_e[io].p1.y = node_e[elem_e[io].vert_buf[2]].pos.y;
         }
     }
 }
@@ -249,8 +249,8 @@ void Solver::ReadDG()
     U_RHS = NewVector<double>(N_dof_glo);
 
 #ifdef DEBUG
-    using mcm::PrintVector;
     using mcm::PrintMatrix;
+    using mcm::PrintVector;
     PrintVector(x_GL_2D, N_GL_2D, "x_GL_2D = ");
     PrintVector(y_GL_2D, N_GL_2D, "y_GL_2D = ");
     PrintVector(w_GL_2D, N_GL_2D, "w_GL_2D = ");
@@ -268,7 +268,7 @@ void Solver::Simulate()
     Project();
 
     cpu_time = 0.;
-    for (iter = 0, t = 0., ht = 0.; t < tmax; iter++, t += ht)
+    for (iter = 0, t = 0., ht = 0.; FuzzyLT(t, tmax); iter++, t += ht)
     {
         gtime.Start();
 
@@ -507,8 +507,8 @@ void Solver::TrackBack()
         node_u[i].pos.y = node_e[i].pos.y - ay * ht;
 
         // periodic BC
-        node_u[i].pos.x = Circulate(node_u[i].pos.x, xmin, xmax);
-        node_u[i].pos.y = Circulate(node_u[i].pos.y, ymin, ymax);
+        // node_u[i].pos.x = Circulate(node_u[i].pos.x, xmin, xmax);
+        // node_u[i].pos.y = Circulate(node_u[i].pos.y, ymin, ymax);
 
         for (jx = 0; jx < Nx + 1; jx++)
         {
@@ -553,22 +553,203 @@ void Solver::TrackBack()
         {
             elem_u[i].edge_buf[k] = elem_e[i].edge_buf[k];
         }
+        elem_u[i].p0.x = elem_e[i].p0.x - ax * ht;
+        elem_u[i].p0.y = elem_e[i].p0.y - ay * ht;
+        elem_u[i].p1.x = elem_e[i].p1.x - ax * ht;
+        elem_u[i].p1.y = elem_e[i].p1.y - ay * ht;
     }
 }
 
 void Solver::Clipping()
 {
-    int i, j;
+    int i;
     for (i = 0; i < N_elem; i++)
     {
         ClipElemU(&elem_u[i]);
-        ClipElemE(i, &elem_e[i], &elem_u[i]);
-        FinalizeClipElemU(&elem_u[i]);
-        for (j = 0; j < elem_u[i].nsub; j++)
+        ClipElemE(&elem_e[i], &elem_u[i]);
+        FinalizeClip(i, &elem_e[i], &elem_u[i]);
+    }
+}
+
+void Solver::ClipElemU(ElemU *eu)
+{
+    double x0, y0, x1, y1, rx, ry, x, y, dx, dy;
+    x0 = eu->p0.x;
+    y0 = eu->p0.y;
+    x1 = eu->p1.x;
+    y1 = eu->p1.y;
+    // x1_u-xmin = k*h+r, -h<r<h
+    // r < 0, x = k*h-h = x1_u-xmin-r-h
+    // r > 0, x = k*h = x1_u-xmin-r
+    // r == 0, x = x1_u-xmin
+    rx = fmod(x1, hx);
+    if (rx < 0)
+    {
+        x = x1 - xmin - rx - hx;
+    }
+    else if (rx > 0)
+    {
+        x = x1 - xmin - rx;
+    }
+    else
+    {
+        x = x1 - xmin;
+    }
+    ry = fmod(y1, hy);
+    if (ry < 0)
+    {
+        y = y1 - ymin - ry - hy;
+    }
+    else if (ry > 0)
+    {
+        y = y1 - ymin - ry;
+    }
+    else
+    {
+        y = y1 - ymin;
+    }
+    eu->poi.x = (x - x0) / hx;
+    eu->poi.y = (y - y0) / hy;
+
+    // add SubElems
+    eu->nsub = 0;
+    // left bottom SubElem
+    dx = fabs(x - x0);
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        eu->sub_buf[eu->nsub].p0.x = x0;
+        eu->sub_buf[eu->nsub].p0.y = y0;
+        eu->sub_buf[eu->nsub].p1.x = x;
+        eu->sub_buf[eu->nsub].p1.y = y;
+        eu->nsub++;
+    }
+    // right bottom SubElem
+    dx = fabs(x1 - x);
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        eu->sub_buf[eu->nsub].p0.x = x;
+        eu->sub_buf[eu->nsub].p0.y = y0;
+        eu->sub_buf[eu->nsub].p1.x = x1;
+        eu->sub_buf[eu->nsub].p1.y = y;
+        eu->nsub++;
+    }
+    // right top SubElem
+    dx = fabs(x1 - x);
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        eu->sub_buf[eu->nsub].p0.x = x;
+        eu->sub_buf[eu->nsub].p0.y = y;
+        eu->sub_buf[eu->nsub].p1.x = x1;
+        eu->sub_buf[eu->nsub].p1.y = y1;
+        eu->nsub++;
+    }
+    // left top SubElem
+    dx = fabs(x - x0);
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        eu->sub_buf[eu->nsub].p0.x = x0;
+        eu->sub_buf[eu->nsub].p0.y = y;
+        eu->sub_buf[eu->nsub].p1.x = x;
+        eu->sub_buf[eu->nsub].p1.y = y1;
+        eu->nsub++;
+    }
+}
+
+void Solver::ClipElemE(ElemE *ee, ElemU *eu)
+{
+    double x0, y0, x1, y1, x, y, dx, dy;
+    x0 = ee->p0.x;
+    y0 = ee->p0.y;
+    x1 = ee->p1.x;
+    y1 = ee->p1.y;
+    ee->poi.x = eu->poi.x;
+    ee->poi.y = eu->poi.y;
+    x = ee->p0.x + ee->poi.x * hx;
+    y = ee->p0.y + ee->poi.y * hy;
+
+    // add SubElems
+    ee->nsub = 0;
+    // left bottom SubElem
+    dx = fabs(x - x0);
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        ee->sub_buf[ee->nsub].p0.x = x0;
+        ee->sub_buf[ee->nsub].p0.y = y0;
+        ee->sub_buf[ee->nsub].p1.x = x;
+        ee->sub_buf[ee->nsub].p1.y = y;
+        ee->nsub++;
+    }
+    // right bottom SubElem
+    dx = fabs(x1 - x);
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        ee->sub_buf[ee->nsub].p0.x = x;
+        ee->sub_buf[ee->nsub].p0.y = y0;
+        ee->sub_buf[ee->nsub].p1.x = x1;
+        ee->sub_buf[ee->nsub].p1.y = y;
+        ee->nsub++;
+    }
+    // right top SubElem
+    dx = fabs(x1 - x);
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        ee->sub_buf[ee->nsub].p0.x = x;
+        ee->sub_buf[ee->nsub].p0.y = y;
+        ee->sub_buf[ee->nsub].p1.x = x1;
+        ee->sub_buf[ee->nsub].p1.y = y1;
+        ee->nsub++;
+    }
+    // left top SubElem
+    dx = fabs(x - x0);
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    {
+        ee->sub_buf[ee->nsub].p0.x = x0;
+        ee->sub_buf[ee->nsub].p0.y = y;
+        ee->sub_buf[ee->nsub].p1.x = x;
+        ee->sub_buf[ee->nsub].p1.y = y1;
+        ee->nsub++;
+    }
+}
+
+void Solver::FinalizeClip(int par_e, ElemE *ee, ElemU *eu)
+{
+    int i, jx, jy;
+    double cx, cy;
+    for (i = 0; i < ee->nsub; i++)
+    {
+        ee->sub_buf[i].par = par_e;
+    }
+    for (i = 0; i < eu->nsub; i++)
+    {
+        cx = (eu->sub_buf[i].p0.x + eu->sub_buf[i].p1.x) / 2.;
+        cy = (eu->sub_buf[i].p0.y + eu->sub_buf[i].p1.y) / 2.;
+        cx = Circulate(cx, xmin, xmax);
+        cy = Circulate(cy, ymin, ymax);
+        for (jx = 0; jx < Nx + 1; jx++)
         {
-            // std::cout << "Checking: " << i << ' ' << j << '\n';
-            CheckSubElem(&elem_u[i], &elem_u[i].sub_buf[j]);
+            if (FuzzyLT(cx, x_grid[jx]))
+            {
+                break;
+            }
         }
+
+        for (jy = 0; jy < Ny + 1; jy++)
+        {
+            if (FuzzyLT(cy, y_grid[jy]))
+            {
+                break;
+            }
+        }
+
+        eu->sub_buf[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
     }
 }
 
@@ -589,14 +770,14 @@ void Solver::MakeSubQuadRuleE(ElemE *elem, SubElem *sub)
 {
     int i;
     double dx, dy, dxy;
-    dx = fabs(sub->x1 - sub->x0);
-    dy = fabs(sub->y1 - sub->y0);
+    dx = fabs(sub->p1.x - sub->p0.x);
+    dy = fabs(sub->p1.y - sub->p0.y);
     dxy = dx * dy;
 
     for (i = 0; i < N_GL_2D; i++)
     {
-        sub->qp[i].x = sub->x0 + dx * x_GL_2D[i];
-        sub->qp[i].y = sub->y0 + dy * y_GL_2D[i];
+        sub->qp[i].x = sub->p0.x + dx * x_GL_2D[i];
+        sub->qp[i].y = sub->p0.y + dy * y_GL_2D[i];
         sub->qp[i].w = w_GL_2D[i] * dxy;
     }
 }
@@ -605,571 +786,20 @@ void Solver::MakeSubQuadRuleU(ElemU *elem, SubElem *sub)
 {
     int i;
     double dx, dy, dxy;
-    dx = fabs(sub->x1 - sub->x0);
-    dy = fabs(sub->y1 - sub->y0);
+    dx = fabs(sub->p1.x - sub->p0.x);
+    dy = fabs(sub->p1.y - sub->p0.y);
     dxy = dx * dy;
 
     for (i = 0; i < N_GL_2D; i++)
     {
-        sub->qp[i].x = sub->x0 + dx * x_GL_2D[i];
-        sub->qp[i].y = sub->y0 + dy * y_GL_2D[i];
+        sub->qp[i].x = sub->p0.x + dx * x_GL_2D[i];
+        sub->qp[i].y = sub->p0.y + dy * y_GL_2D[i];
         sub->qp[i].w = w_GL_2D[i] * dxy;
+
+        // periodic BC
+        sub->qp[i].x = Circulate(sub->qp[i].x, xmin, xmax);
+        sub->qp[i].y = Circulate(sub->qp[i].y, ymin, ymax);
     }
-}
-
-void Solver::ClipElemU(ElemU *elem)
-{
-    int i[4], j[4], k;
-    double x0, x1, y0, y1;
-    elem->npoi = 32;
-    elem->nseg = 16;
-    elem->nsub = 4;
-    i[0] = elem->edge_buf[0];
-    i[1] = elem->edge_buf[1];
-    i[2] = elem->edge_buf[2];
-    i[3] = elem->edge_buf[3];
-    j[0] = node_u[elem->vert_buf[0]].par;
-    j[1] = node_u[elem->vert_buf[1]].par;
-    j[2] = node_u[elem->vert_buf[2]].par;
-    j[3] = node_u[elem->vert_buf[3]].par;
-
-    // clip bottom edge
-    ClipHEdgeU(0, elem->poi_buf, 0, elem->seg_buf, &edge_u[i[0]]);
-    // clip right edge
-    ClipVEdgeU(4, elem->poi_buf, 2, elem->seg_buf, &edge_u[i[1]]);
-    // clip top edge
-    ClipHEdgeU(8, elem->poi_buf, 4, elem->seg_buf, &edge_u[i[2]]);
-    // clip left edge
-    ClipVEdgeU(12, elem->poi_buf, 6, elem->seg_buf, &edge_u[i[3]]);
-    // make left bottom SubElem
-    elem->sub_buf[0].par = node_u[elem->vert_buf[0]].par;
-    MakeLBSubElem(j[0], 0, 6, 16, elem->poi_buf, 8, elem->seg_buf,
-                  &elem->seg_buf[0], &elem->seg_buf[6], &elem->sub_buf[0]);
-    // make right bottom SubElem
-    elem->sub_buf[1].par = node_u[elem->vert_buf[1]].par;
-    MakeRBSubElem(j[1], 1, 2, 20, elem->poi_buf, 10, elem->seg_buf,
-                  &elem->seg_buf[1], &elem->seg_buf[2], &elem->sub_buf[1]);
-    // make right top SubElem
-    elem->sub_buf[2].par = node_u[elem->vert_buf[2]].par;
-    MakeRTSubElem(j[2], 5, 3, 24, elem->poi_buf, 12, elem->seg_buf,
-                  &elem->seg_buf[5], &elem->seg_buf[3], &elem->sub_buf[2]);
-    // make left top SubElem
-    elem->sub_buf[3].par = node_u[elem->vert_buf[3]].par;
-    MakeLTSubElem(j[3], 4, 7, 28, elem->poi_buf, 14, elem->seg_buf,
-                  &elem->seg_buf[4], &elem->seg_buf[7], &elem->sub_buf[3]);
-    // make POI and Segment orientation always counter-clockwise
-    // and store bounding box
-    for (k = 0; k < elem->nsub; k++)
-    {
-        SubElem *sub = &elem->sub_buf[k];
-
-        // make orientation counter-clockwise
-        x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
-        x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
-        if (FuzzyGT(x0, x1))
-        {
-            std::swap(elem->seg_buf[sub->seg[0]].beg, elem->seg_buf[sub->seg[0]].end);
-        }
-        y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
-        y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
-        if (FuzzyGT(y0, y1))
-        {
-            std::swap(elem->seg_buf[sub->seg[1]].beg, elem->seg_buf[sub->seg[1]].end);
-        }
-        x0 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.x;
-        x1 = elem->poi_buf[elem->seg_buf[sub->seg[2]].end].pos.x;
-        if (FuzzyLT(x0, x1))
-        {
-            std::swap(elem->seg_buf[sub->seg[2]].beg, elem->seg_buf[sub->seg[2]].end);
-        }
-        y0 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.y;
-        y1 = elem->poi_buf[elem->seg_buf[sub->seg[3]].end].pos.y;
-        if (FuzzyLT(y0, y1))
-        {
-            std::swap(elem->seg_buf[sub->seg[3]].beg, elem->seg_buf[sub->seg[3]].end);
-        }
-
-        // store two corners
-        sub->x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
-        sub->x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
-        sub->y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
-        sub->y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
-    }
-}
-
-void Solver::ClipHEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge)
-{
-    bool inside;
-    int i, n0, n1, m0, m1;
-    double x, y, x0, x1;
-    n0 = edge->beg;
-    n1 = edge->end;
-    m0 = node_u[n0].par;
-    m1 = node_u[n1].par;
-    x0 = node_u[n0].pos.x;
-    x1 = node_u[n1].pos.x;
-    y = node_u[n0].pos.y;
-
-    if ((n0 < n1) ^ (m0 < m1)) // boundary
-    {
-        if (n0 > n1)
-        {
-            std::swap(m0, m1);
-            std::swap(x0, x1);
-        }
-
-        poi_buf[off1].type = 0;
-        poi_buf[off1].par = m0;
-        poi_buf[off1].pos.x = x0;
-        poi_buf[off1].pos.y = y;
-        poi_buf[off1 + 1].type = 1;
-        poi_buf[off1 + 1].par = m0;
-        poi_buf[off1 + 1].pos.x = xmax;
-        poi_buf[off1 + 1].pos.y = y;
-        poi_buf[off1 + 2].type = 1;
-        poi_buf[off1 + 2].par = m1;
-        poi_buf[off1 + 2].pos.x = xmin;
-        poi_buf[off1 + 2].pos.y = y;
-        poi_buf[off1 + 3].type = 0;
-        poi_buf[off1 + 3].par = m1;
-        poi_buf[off1 + 3].pos.x = x1;
-        poi_buf[off1 + 3].pos.y = y;
-    }
-    else // interior
-    {
-        for (i = 0; i < Nx + 1; i++)
-        {
-            x = x_grid[i];
-            inside = (FuzzyLT(x, x0) ^ FuzzyLT(x, x1)) ||
-                     (FuzzyEQ(x, x0)) ||
-                     (FuzzyEQ(x, x1));
-            if (inside)
-            {
-                if (n0 > n1)
-                {
-                    std::swap(m0, m1);
-                    std::swap(x0, x1);
-                }
-
-                poi_buf[off1].type = 0;
-                poi_buf[off1].par = m0;
-                poi_buf[off1].pos.x = x0;
-                poi_buf[off1].pos.y = y;
-                poi_buf[off1 + 1].type = 1;
-                poi_buf[off1 + 1].par = m0;
-                poi_buf[off1 + 1].pos.x = x;
-                poi_buf[off1 + 1].pos.y = y;
-                poi_buf[off1 + 2].type = 1;
-                poi_buf[off1 + 2].par = m1;
-                poi_buf[off1 + 2].pos.x = x;
-                poi_buf[off1 + 2].pos.y = y;
-                poi_buf[off1 + 3].type = 0;
-                poi_buf[off1 + 3].par = m1;
-                poi_buf[off1 + 3].pos.x = x1;
-                poi_buf[off1 + 3].pos.y = y;
-
-                break;
-            }
-        }
-    }
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-}
-
-void Solver::ClipVEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge)
-{
-    bool inside;
-    int i, n0, n1, m0, m1;
-    double x, y, y0, y1;
-    n0 = edge->beg;
-    n1 = edge->end;
-    m0 = node_u[n0].par;
-    m1 = node_u[n1].par;
-    y0 = node_u[n0].pos.y;
-    y1 = node_u[n1].pos.y;
-    x = node_u[n0].pos.x;
-    if ((n0 < n1) ^ (m0 < m1)) // boundary
-    {
-        if (n0 > n1)
-        {
-            std::swap(m0, m1);
-            std::swap(y0, y1);
-        }
-
-        poi_buf[off1].type = 0;
-        poi_buf[off1].par = m0;
-        poi_buf[off1].pos.x = x;
-        poi_buf[off1].pos.y = y0;
-        poi_buf[off1 + 1].type = 1;
-        poi_buf[off1 + 1].par = m0;
-        poi_buf[off1 + 1].pos.x = x;
-        poi_buf[off1 + 1].pos.y = ymax;
-        poi_buf[off1 + 2].type = 1;
-        poi_buf[off1 + 2].par = m1;
-        poi_buf[off1 + 2].pos.x = x;
-        poi_buf[off1 + 2].pos.y = ymin;
-        poi_buf[off1 + 3].type = 0;
-        poi_buf[off1 + 3].par = m1;
-        poi_buf[off1 + 3].pos.x = x;
-        poi_buf[off1 + 3].pos.y = y1;
-    }
-    else // interior
-    {
-        for (i = 0; i < Ny + 1; i++)
-        {
-            y = y_grid[i];
-            inside = (FuzzyLT(y, y0) ^ FuzzyLT(y, y1)) ||
-                     (FuzzyEQ(y, y0)) ||
-                     (FuzzyEQ(y, y1));
-            if (inside)
-            {
-                if (n0 > n1)
-                {
-                    std::swap(m0, m1);
-                    std::swap(y0, y1);
-                }
-                poi_buf[off1].type = 0;
-                poi_buf[off1].par = m0;
-                poi_buf[off1].pos.x = x;
-                poi_buf[off1].pos.y = y0;
-                poi_buf[off1 + 1].type = 1;
-                poi_buf[off1 + 1].par = m0;
-                poi_buf[off1 + 1].pos.x = x;
-                poi_buf[off1 + 1].pos.y = y;
-                poi_buf[off1 + 2].type = 1;
-                poi_buf[off1 + 2].par = m1;
-                poi_buf[off1 + 2].pos.x = x;
-                poi_buf[off1 + 2].pos.y = y;
-                poi_buf[off1 + 3].type = 0;
-                poi_buf[off1 + 3].par = m1;
-                poi_buf[off1 + 3].pos.x = x;
-                poi_buf[off1 + 3].pos.y = y1;
-                break;
-            }
-        }
-    }
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-}
-
-void Solver::MakeLBSubElem(int par, int ib, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                           Segment *seg_b, Segment *seg_l, SubElem *sub)
-{
-    double x0, x1, y0, y1;
-    x0 = poi_buf[seg_b->beg].pos.x;
-    x1 = poi_buf[seg_b->end].pos.x;
-    y0 = poi_buf[seg_l->beg].pos.y;
-    y1 = poi_buf[seg_l->end].pos.y;
-    if (FuzzyGT(x0, x1))
-    {
-        std::swap(x0, x1);
-    }
-    if (FuzzyGT(y0, y1))
-    {
-        std::swap(y0, y1);
-    }
-    poi_buf[off1].type = 1;
-    poi_buf[off1].par = par;
-    poi_buf[off1].pos.x = x0;
-    poi_buf[off1].pos.y = y1;
-    poi_buf[off1 + 1].type = 2;
-    poi_buf[off1 + 1].par = par;
-    poi_buf[off1 + 1].pos.x = x1;
-    poi_buf[off1 + 1].pos.y = y1;
-    poi_buf[off1 + 2].type = 2;
-    poi_buf[off1 + 2].par = par;
-    poi_buf[off1 + 2].pos.x = x1;
-    poi_buf[off1 + 2].pos.y = y1;
-    poi_buf[off1 + 3].type = 1;
-    poi_buf[off1 + 3].par = par;
-    poi_buf[off1 + 3].pos.x = x1;
-    poi_buf[off1 + 3].pos.y = y0;
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-    sub->nseg = 4;
-    sub->seg[0] = ib;
-    sub->seg[1] = off2 + 1;
-    sub->seg[2] = off2;
-    sub->seg[3] = il;
-}
-
-void Solver::MakeRBSubElem(int par, int ib, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                           Segment *seg_b, Segment *seg_r, SubElem *sub)
-{
-    double x0, x1, y0, y1;
-    x0 = poi_buf[seg_b->beg].pos.x;
-    x1 = poi_buf[seg_b->end].pos.x;
-    y0 = poi_buf[seg_r->beg].pos.y;
-    y1 = poi_buf[seg_r->end].pos.y;
-    if (FuzzyGT(x0, x1))
-    {
-        std::swap(x0, x1);
-    }
-    if (FuzzyGT(y0, y1))
-    {
-        std::swap(y0, y1);
-    }
-    poi_buf[off1].type = 1;
-    poi_buf[off1].par = par;
-    poi_buf[off1].pos.x = x1;
-    poi_buf[off1].pos.y = y1;
-    poi_buf[off1 + 1].type = 2;
-    poi_buf[off1 + 1].par = par;
-    poi_buf[off1 + 1].pos.x = x0;
-    poi_buf[off1 + 1].pos.y = y1;
-    poi_buf[off1 + 2].type = 2;
-    poi_buf[off1 + 2].par = par;
-    poi_buf[off1 + 2].pos.x = x0;
-    poi_buf[off1 + 2].pos.y = y1;
-    poi_buf[off1 + 3].type = 1;
-    poi_buf[off1 + 3].par = par;
-    poi_buf[off1 + 3].pos.x = x0;
-    poi_buf[off1 + 3].pos.y = y0;
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-    sub->nseg = 4;
-    sub->seg[0] = ib;
-    sub->seg[1] = ir;
-    sub->seg[2] = off2;
-    sub->seg[3] = off2 + 1;
-}
-
-void Solver::MakeRTSubElem(int par, int it, int ir, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                           Segment *seg_t, Segment *seg_r, SubElem *sub)
-{
-    double x0, x1, y0, y1;
-    x0 = poi_buf[seg_t->beg].pos.x;
-    x1 = poi_buf[seg_t->end].pos.x;
-    y0 = poi_buf[seg_r->beg].pos.y;
-    y1 = poi_buf[seg_r->end].pos.y;
-    if (FuzzyGT(x0, x1))
-    {
-        std::swap(x0, x1);
-    }
-    if (FuzzyGT(y0, y1))
-    {
-        std::swap(y0, y1);
-    }
-    poi_buf[off1].type = 1;
-    poi_buf[off1].par = par;
-    poi_buf[off1].pos.x = x1;
-    poi_buf[off1].pos.y = y0;
-    poi_buf[off1 + 1].type = 2;
-    poi_buf[off1 + 1].par = par;
-    poi_buf[off1 + 1].pos.x = x0;
-    poi_buf[off1 + 1].pos.y = y0;
-    poi_buf[off1 + 2].type = 2;
-    poi_buf[off1 + 2].par = par;
-    poi_buf[off1 + 2].pos.x = x0;
-    poi_buf[off1 + 2].pos.y = y0;
-    poi_buf[off1 + 3].type = 1;
-    poi_buf[off1 + 3].par = par;
-    poi_buf[off1 + 3].pos.x = x0;
-    poi_buf[off1 + 3].pos.y = y1;
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-    sub->nseg = 4;
-    sub->seg[0] = off2;
-    sub->seg[1] = ir;
-    sub->seg[2] = it;
-    sub->seg[3] = off2 + 1;
-}
-
-void Solver::MakeLTSubElem(int par, int it, int il, int off1, POI *poi_buf, int off2, Segment *seg_buf,
-                           Segment *seg_t, Segment *seg_l, SubElem *sub)
-{
-    double x0, x1, y0, y1;
-    x0 = poi_buf[seg_t->beg].pos.x;
-    x1 = poi_buf[seg_t->end].pos.x;
-    y0 = poi_buf[seg_l->beg].pos.y;
-    y1 = poi_buf[seg_l->end].pos.y;
-    if (x0 > x1)
-    {
-        std::swap(x0, x1);
-    }
-    if (y0 > y1)
-    {
-        std::swap(y0, y1);
-    }
-    poi_buf[off1].type = 1;
-    poi_buf[off1].par = par;
-    poi_buf[off1].pos.x = x0;
-    poi_buf[off1].pos.y = y0;
-    poi_buf[off1 + 1].type = 2;
-    poi_buf[off1 + 1].par = par;
-    poi_buf[off1 + 1].pos.x = x1;
-    poi_buf[off1 + 1].pos.y = y0;
-    poi_buf[off1 + 2].type = 2;
-    poi_buf[off1 + 2].par = par;
-    poi_buf[off1 + 2].pos.x = x1;
-    poi_buf[off1 + 2].pos.y = y0;
-    poi_buf[off1 + 3].type = 1;
-    poi_buf[off1 + 3].par = par;
-    poi_buf[off1 + 3].pos.x = x1;
-    poi_buf[off1 + 3].pos.y = y1;
-    seg_buf[off2].beg = off1;
-    seg_buf[off2].end = off1 + 1;
-    seg_buf[off2 + 1].beg = off1 + 3;
-    seg_buf[off2 + 1].end = off1 + 2;
-    sub->nseg = 4;
-    sub->seg[0] = off2;
-    sub->seg[1] = off2 + 1;
-    sub->seg[2] = it;
-    sub->seg[3] = il;
-}
-
-void Solver::ClipElemE(int par, ElemE *elem, ElemU *elu)
-{
-    bool inside;
-    int i;
-    double x, y, x0, x1, y0, y1;
-    x0 = node_e[elem->vert_buf[0]].pos.x;
-    x1 = node_e[elem->vert_buf[2]].pos.x;
-    y0 = node_e[elem->vert_buf[0]].pos.y;
-    y1 = node_e[elem->vert_buf[2]].pos.y;
-    elem->npoi = elu->npoi;
-    elem->nseg = elu->nseg;
-    elem->nsub = elu->nsub;
-    for (i = 0; i < elem->npoi; i++)
-    {
-        x = elu->poi_buf[i].pos.x + ax * ht;
-        y = elu->poi_buf[i].pos.y + ax * ht;
-        x = Circulate(x, xmin, xmax);
-        y = Circulate(y, ymin, ymax);
-        inside = (RealLT(x, x0) ^ RealLT(x, x1)) ||
-                 (FuzzyEQ(x, x0)) ||
-                 (FuzzyEQ(x, x1));
-        if (!inside)
-        {
-            if (FuzzyEQ(x, xmax))
-            {
-                x = xmin;
-            }
-            else if (FuzzyEQ(x, xmin))
-            {
-                x = xmax;
-            }
-        }
-        inside = (RealLT(y, y0) ^ RealLT(y, y1)) ||
-                 (FuzzyEQ(y, y0)) ||
-                 (FuzzyEQ(y, y1));
-        if (!inside)
-        {
-            if (FuzzyEQ(y, ymax))
-            {
-                y = ymin;
-            }
-            else if (FuzzyEQ(y, ymin))
-            {
-                y = ymax;
-            }
-        }
-        elem->poi_buf[i].par = i;
-        elem->poi_buf[i].type = elu->poi_buf[i].type;
-        elem->poi_buf[i].pos.x = x;
-        elem->poi_buf[i].pos.y = y;
-    }
-    for (i = 0; i < elem->nseg; i++)
-    {
-        elem->seg_buf[i] = elu->seg_buf[i];
-    }
-    for (i = 0; i < elem->nsub; i++)
-    {
-        SubElem *sub = &elem->sub_buf[i];
-        (*sub) = elu->sub_buf[i];
-        sub->par = par;
-        sub->x0 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
-        sub->x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].end].pos.x;
-        sub->y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
-        sub->y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
-    }
-}
-
-void Solver::FinalizeClipElemU(ElemU *elem)
-{
-    // TODO deal with overlap situation.
-    bool overlap = false;
-    int i, par;
-    for (i = 0; i < elem->nsub; i++)
-    {
-        par = elem->sub_buf[i].par;
-        if (CheckOverlap(elem, &elem_e[par]))
-        {
-            overlap = true;
-            break;
-        }
-    }
-    // when overlap == true, fix all SubElem.par
-    if (overlap)
-    {
-        for (i = 0; i < elem->nsub; i++)
-        {
-            elem->sub_buf[i].par = par;
-        }
-    }
-}
-
-void Solver::CheckSubElem(ElemU *elem, SubElem *sub)
-{
-    MCM_ASSERT(sub->nseg == 4, "sub->nseg != 4");
-    double x1, y1, x2, y2, x3, y3, x4, y4;
-    double cx, cy;
-    double dd1, dd2, dd3, dd4;
-
-    x1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.x;
-    y1 = elem->poi_buf[elem->seg_buf[sub->seg[0]].beg].pos.y;
-    x2 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.x;
-    y2 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
-    x3 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.x;
-    y3 = elem->poi_buf[elem->seg_buf[sub->seg[2]].beg].pos.y;
-    x4 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.x;
-    y4 = elem->poi_buf[elem->seg_buf[sub->seg[3]].beg].pos.y;
-
-    cx = (x1 + x2 + x3 + x4) / 4.;
-    cy = (y1 + y2 + y3 + y4) / 4.;
-
-    dd1 = Square(cx - x1) + Square(cy - y1);
-    dd2 = Square(cx - x2) + Square(cy - y2);
-    dd3 = Square(cx - x3) + Square(cy - y3);
-    dd4 = Square(cx - x4) + Square(cy - y4);
-    // MCM_CONTRACT_VAR(dd1);
-    // MCM_CONTRACT_VAR(dd2);
-    // MCM_CONTRACT_VAR(dd3);
-    // MCM_CONTRACT_VAR(dd4);
-    MCM_VERIFY(FuzzyEQ(dd1, dd2) && FuzzyEQ(dd1, dd3) && FuzzyEQ(dd1, dd4),
-               "SubElem is not a Rectangle: " << std::fixed << std::setprecision(4)
-                                              << x1 << ' ' << y1 << ' '
-                                              << x2 << ' ' << y2 << ' '
-                                              << x3 << ' ' << y3 << ' '
-                                              << x4 << ' ' << y4 << '\n');
-    MCM_ASSERT(FuzzyEQ(cx, x1) && FuzzyEQ(cx, x2) && FuzzyEQ(cx, x3) && FuzzyEQ(cx, x4), "SubElem is a point");
-}
-
-bool Solver::CheckOverlap(ElemU *eu, ElemE *ee)
-{
-    int i;
-    for (i = 0; i < 4; i++)
-    {
-        if (!FuzzyEQ(node_u[eu->vert_buf[i]].pos.x, node_e[ee->vert_buf[i]].pos.x))
-        {
-            return false;
-        }
-        if (!FuzzyEQ(node_u[eu->vert_buf[i]].pos.y, node_e[ee->vert_buf[i]].pos.y))
-        {
-            return false;
-        }
-    }
-    return true;
 }
 
 void Solver::Assemble()
@@ -1207,8 +837,8 @@ void Solver::Assemble()
 
 double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
 {
-    bool outside = (FuzzyLT(x[0], elem->x0)) || (FuzzyGT(x[0], elem->x1)) ||
-                   (FuzzyLT(x[1], elem->y0)) || (FuzzyGT(x[1], elem->y1));
+    bool outside = (FuzzyLT(x[0], elem->p0.x)) || (FuzzyGT(x[0], elem->p1.x)) ||
+                   (FuzzyLT(x[1], elem->p0.y)) || (FuzzyGT(x[1], elem->p1.y));
     // bool interface = (FuzzyEQ(x[0], elem->x0)) || (FuzzyEQ(x[0], elem->x1)) ||
     //                  (FuzzyEQ(x[1], elem->y0)) || (FuzzyEQ(x[1], elem->y1));
     if (outside)
@@ -1216,7 +846,7 @@ double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
         return 0.;
     }
 
-    double xx[2] = {(x[0] - elem->x0) / hx, (x[1] - elem->y0) / hy};
+    double xx[2] = {(x[0] - elem->p0.x) / hx, (x[1] - elem->p0.y) / hy};
 
     return CalcPkBasis(2, P, k, xx);
 }

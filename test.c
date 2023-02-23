@@ -1,5 +1,6 @@
-#include <iostream>
-#include <cmath>
+#include <stdlib.h>
+#include <stdio.h>
+#include <math.h>
 
 double Circulate(double x, double xL, double xR)
 {
@@ -80,39 +81,45 @@ int Circulate(int x, int xL, int xR)
 
 int main(int argc, char const *argv[])
 {
-    double xL = -1.;
-    double xR = 1.;
-    double x = -1.5;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = .5;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = 1.5;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = -1.;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = 1.;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = -3.;
-    std::cout << Circulate(x, xL, xR) << std::endl;
-    x = 3.;
-    std::cout << Circulate(x, xL, xR) << std::endl;
+    double xmin = 0.;
+    double xmax = 1.;
+    double x0, x1, hx, x0_u, x1_u, x_u, ax, ht, r;
 
-    int ia = 0;
-    int ib = 10;
-    int i = 2;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = -2;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = 12;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = 0;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = 10;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = 20;
-    std::cout << Circulate(i, ia, ib) << std::endl;
-    i = -10;
-    std::cout << Circulate(i, ia, ib) << std::endl;
+    ax = 100000;
+    ht = -.0001;
+    hx = .0001;
+    x0 = 1 * hx;
+    x1 = 2 * hx;
+    hx = x1 - x0;
+    x0_u = x0 - ax * ht;
+    x1_u = x1 - ax * ht;
+    printf("x0 = %.4f\n", x0);
+    printf("x1 = %.4f\n", x1);
+    printf("x0_u = %.4f\n", x0_u);
+    printf("x1_u = %.4f\n", x1_u);
+
+    r = fmod(x1_u, hx);
+    // x1_u-xmin = k*h+r, -h<r<h
+    // r < 0, x = k*h-h = x1_u-xmin-r-h
+    // r > 0, x = k*h = x1_u-xmin-r
+    // r == 0, x = x1_u-xmin
+    if (r < 0)
+    {
+        x_u = x1_u - xmin - r - hx;
+    }
+    else if (r > 0)
+    {
+        x_u = x1_u - xmin - r;
+    }
+    else
+    {
+        x_u = x1_u - xmin;
+    }
+
+    printf("r = %.4f\n", r);
+    printf("x = %.4f\n", x_u);
+    printf("check upper bound: %d\n", x_u <= x1_u);
+    printf("check lower bound: %d\n", x_u >= x0_u);
 
     return 0;
 }
