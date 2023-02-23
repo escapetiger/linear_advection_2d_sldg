@@ -19,5 +19,6 @@ Error order tests for order = 1, 2, 3, 4, 5 are passed.
 Only periodic boundary conditions are considered.
 
 **Future work:**
+
 Extend this idea to 3D case.
 
