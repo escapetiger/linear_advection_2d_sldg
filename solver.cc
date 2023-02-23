@@ -35,6 +35,21 @@ void Solver::ReadOptions(int argc, char const *argv[])
     reader.PrintOptions();
 }
 
+void Solver::ReadOptions(SolverOptions *opt)
+{
+    xmin = opt->xmin;
+    xmax = opt->xmax;
+    ymin = opt->ymin;
+    ymax = opt->ymax;
+    tmax = opt->tmax;
+    ax = opt->ax;
+    ay = opt->ay;
+    Nx = opt->Nx;
+    Ny = opt->Ny;
+    CFL = opt->CFL;
+    order = opt->order;
+}
+
 void Solver::ReadMesh()
 {
     int ix, iy, io, id[4];
@@ -232,6 +247,17 @@ void Solver::ReadDG()
     U_tn = NewVector<double>(N_dof_glo);
     U_tn1 = NewVector<double>(N_dof_glo);
     U_RHS = NewVector<double>(N_dof_glo);
+
+#ifdef DEBUG
+    using mcm::PrintVector;
+    using mcm::PrintMatrix;
+    PrintVector(x_GL_2D, N_GL_2D, "x_GL_2D = ");
+    PrintVector(y_GL_2D, N_GL_2D, "y_GL_2D = ");
+    PrintVector(w_GL_2D, N_GL_2D, "w_GL_2D = ");
+    PrintMatrix(v_GL_2D, N_dof_loc, N_GL_2D, "v_GL_2D = ");
+    PrintVector(v_XC_YC_2D, N_dof_loc, "v_XC_YC_2D = ");
+    PrintMatrix(mat_v_u_2D, N_dof_loc, N_dof_loc, "mat_v_u_2D = ");
+#endif
 }
 
 void Solver::Simulate()
@@ -270,12 +296,6 @@ void Solver::Simulate()
     std::cout << '\n';
     std::cout << "iteration terminate at time t = " << t << '\n';
     std::cout << "total cpu time = " << std::setprecision(2) << cpu_time * 1e3 << " ms" << '\n';
-}
-
-void Solver::Refine()
-{
-    hx *= 2;
-    hy *= 2;
 }
 
 void Solver::CalcResidual()
@@ -675,7 +695,6 @@ void Solver::ClipElemU(ElemU *elem)
         sub->y0 = elem->poi_buf[elem->seg_buf[sub->seg[1]].beg].pos.y;
         sub->y1 = elem->poi_buf[elem->seg_buf[sub->seg[1]].end].pos.y;
     }
-
 }
 
 void Solver::ClipHEdgeU(int off1, POI *poi_buf, int off2, Segment *seg_buf, EdgeU *edge)
@@ -1177,8 +1196,8 @@ void Solver::Assemble()
                         udof = elem_e[elem_u[i].sub_buf[l].par].udof[k];
                         u += udof * CalcElemUPkBasis(k, &elem_u[i], &elem_u[i].sub_buf[l], qu->xy);
                     }
-                    std::cout << std::fixed << std::setprecision(8);
-                    std::cout << i << ' ' << j << ' ' << u << ' ' << v << ' ' << qe->w << '\n';
+                    // std::cout << std::fixed << std::setprecision(8);
+                    // std::cout << i << ' ' << j << ' ' << u << ' ' << v << ' ' << qe->w << '\n';
                     U_RHS[jg] += qe->w * u * v / mass;
                 }
             }
@@ -1190,17 +1209,16 @@ double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
 {
     bool outside = (FuzzyLT(x[0], elem->x0)) || (FuzzyGT(x[0], elem->x1)) ||
                    (FuzzyLT(x[1], elem->y0)) || (FuzzyGT(x[1], elem->y1));
-    bool interface = (FuzzyEQ(x[0], elem->x0)) || (FuzzyEQ(x[0], elem->x1)) ||
-                     (FuzzyEQ(x[1], elem->y0)) || (FuzzyEQ(x[1], elem->y1));
+    // bool interface = (FuzzyEQ(x[0], elem->x0)) || (FuzzyEQ(x[0], elem->x1)) ||
+    //                  (FuzzyEQ(x[1], elem->y0)) || (FuzzyEQ(x[1], elem->y1));
     if (outside)
     {
         return 0.;
     }
 
-    double w = (interface) ? 1. : 1.;
     double xx[2] = {(x[0] - elem->x0) / hx, (x[1] - elem->y0) / hy};
 
-    return w * CalcPkBasis(2, P, k, xx);
+    return CalcPkBasis(2, P, k, xx);
 }
 
 double Solver::CalcElemUPkBasis(const int k, ElemU *elem, SubElem *sub, double *x)

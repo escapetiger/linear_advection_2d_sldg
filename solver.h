@@ -10,6 +10,22 @@ static constexpr int kMAX_N_GL_2D = 36;
 
 /** Solve u_t + a*u_x + b*u_y = 0 */
 
+typedef struct
+{
+    double xmin = 0.; ///< minimum value of x
+    double xmax = 1.; ///< maximum value of x
+    double ymin = 0.; ///< minimum value of y
+    double ymax = 1.; ///< maximum value of y
+    double tmax = 0.; ///< final simulation time
+    double CFL = .8;  ///< CFL number
+    double ax = 1.;   ///< wave speed in x
+    double ay = 1.;   ///< wave speed in y
+    int Nx;           ///< size of x-partition
+    int Ny;           ///< size of y-partition
+    int Nt;           ///< size of t-partition
+    int order;        ///< approximation order of numerical scheme
+} SolverOptions;
+
 class Solver
 {
 public:
@@ -82,10 +98,10 @@ public:
     ~Solver() = default;
 
     void ReadOptions(int argc, char const *argv[]);
+    void ReadOptions(SolverOptions *opt);
     void ReadMesh();
     void ReadDG();
     void Simulate();
-    void Refine();
     void CalcResidual();
     void GetResidual(const int nerr, double *e);
     void OutputResidual(const char *file);

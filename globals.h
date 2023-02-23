@@ -4,10 +4,10 @@
 #include "mcm/mcm.h"
 
 using mcm::CommandLineReader;
-using mcm::mesh::Graph;
 using mcm::gerr;
 using mcm::gout;
 using mcm::gtime;
+using mcm::mesh::Graph;
 
 // 2D `double` vector
 typedef union
@@ -85,7 +85,7 @@ typedef struct
     int nseg;              ///< number of Segments
     int seg[4];            ///< indices of Segments
     double x0, y0, x1, y1; ///< fast check bound
-    QuadPoint qp[4];       ///< quadrature points
+    QuadPoint qp[16];      ///< quadrature points
 } SubElem;
 
 // eulerian edge

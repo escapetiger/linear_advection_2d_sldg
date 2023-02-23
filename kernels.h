@@ -28,8 +28,6 @@ double CalcPkBasis(const int dim, const int k, const int n, const double *x);
 /** Calculate weighted summation. */
 double CalcWeightedSum(const int n, const double *w, const double *x);
 
-
-
 /** Circulate `double` number in [xL,xR]. */
 double Circulate(double x, double xL, double xR);
 
@@ -60,5 +58,6 @@ int Circulate(int x, int xL, int xR);
  * For Qk-reconstruction, we need redefine the problem.
  */
 void PkReconst(const int k, const double **Ap, const double *bp, double *xp);
+
 
 #endif

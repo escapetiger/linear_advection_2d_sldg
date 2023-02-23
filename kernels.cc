@@ -1,5 +1,26 @@
 #include "kernels.h"
 
+constexpr inline double Phi0(double x) noexcept
+{
+    return (1.);
+}
+constexpr inline double Phi1(double x) noexcept
+{
+    return (x);
+}
+constexpr inline double Phi2(double x) noexcept
+{
+    return (x * x - 1. / 12.);
+}
+constexpr inline double Phi3(double x) noexcept
+{
+    return ((x * x - .15) * x);
+}
+constexpr inline double Phi4(double x) noexcept
+{
+    return ((x * x - 3.0 / 14.0) * x * x + 3.0 / 560.0);
+}
+
 void SetQuadPoint(const int i, const double a, const double v,
                   double *x, double *w)
 {
@@ -194,7 +215,7 @@ double CalcQkBasis(const int dim, const int k, const int *n, const double *x)
 double CalcQkBasis(const int dim, const int k, const int j, const int *n, const double *x)
 {
     MCM_CONTRACT_VAR(k);
-    MCM_ASSERT(k < 3, "it is recommended to use k < 3");
+    MCM_ASSERT(k < 5, "it is recommended to use k < 5");
     int m;
     double y = 1.0;
     for (int i = 0; i < dim; i++)
@@ -210,30 +231,65 @@ double CalcQkBasis(const int dim, const int k, const int n, const double *x)
     MCM_CONTRACT_VAR(dim);
     MCM_CONTRACT_VAR(k);
     MCM_ASSERT(dim == 2, "dim must be equal to 2");
-    MCM_ASSERT(k < 3, "k must be less than 3");
+    MCM_ASSERT(k < 5, "k must be less than 5");
     double xx[2] = {x[0] - .5, x[1] - .5};
     switch (n)
     {
     case 0:
-        return 1.;
+        return Phi0(xx[0]) * Phi0(xx[1]);
     case 1:
-        return xx[0];
+        return Phi1(xx[0]) * Phi0(xx[1]);
     case 2:
-        return xx[0] * xx[0] - 1. / 12.;
+        return Phi1(xx[0]) * Phi1(xx[1]);
     case 3:
-        return xx[1];
+        return Phi0(xx[0]) * Phi1(xx[1]);
     case 4:
-        return xx[0] * xx[1];
+        return Phi2(xx[0]) * Phi0(xx[1]);
     case 5:
-        return (xx[0] * xx[0] - 1. / 12.) * xx[1];
+        return Phi2(xx[0]) * Phi1(xx[1]);
     case 6:
-        return xx[1] * xx[1] - 1. / 12.;
+        return Phi2(xx[0]) * Phi2(xx[1]);
     case 7:
-        return xx[0] * (xx[1] * xx[1] - 1. / 12.);
+        return Phi1(xx[0]) * Phi2(xx[1]);
     case 8:
-        return (xx[0] * xx[0] - 1. / 12.) * (xx[1] * xx[1] - 1. / 12.);
+        return Phi0(xx[0]) * Phi2(xx[1]);
+    case 9:
+        return Phi3(xx[0]) * Phi0(xx[1]);
+    case 10:
+        return Phi3(xx[0]) * Phi1(xx[1]);
+    case 11:
+        return Phi3(xx[0]) * Phi2(xx[1]);
+    case 12:
+        return Phi3(xx[0]) * Phi3(xx[1]);
+    case 13:
+        return Phi2(xx[0]) * Phi3(xx[1]);
+    case 14:
+        return Phi1(xx[0]) * Phi3(xx[1]);
+    case 15:
+        return Phi0(xx[0]) * Phi3(xx[1]);
+    case 16:
+        return Phi4(xx[0]) * Phi0(xx[1]);
+    case 17:
+        return Phi4(xx[0]) * Phi1(xx[1]);
+    case 18:
+        return Phi4(xx[0]) * Phi2(xx[1]);
+    case 19:
+        return Phi4(xx[0]) * Phi3(xx[1]);
+    case 20:
+        return Phi4(xx[0]) * Phi4(xx[1]);
+    case 21:
+        return Phi4(xx[0]) * Phi4(xx[1]);
+    case 22:
+        return Phi3(xx[0]) * Phi4(xx[1]);
+    case 23:
+        return Phi2(xx[0]) * Phi4(xx[1]);
+    case 24:
+        return Phi1(xx[0]) * Phi4(xx[1]);
+    case 25:
+        return Phi0(xx[0]) * Phi4(xx[1]);
     }
-    return 0.;
+    MCM_ABORT("bad n");
+    return 0.;  // make compiler happy
 }
 
 double CalcPkBasis(const int dim, const int k, const int n, const double *x)
@@ -241,24 +297,43 @@ double CalcPkBasis(const int dim, const int k, const int n, const double *x)
     MCM_CONTRACT_VAR(dim);
     MCM_CONTRACT_VAR(k);
     MCM_ASSERT(dim == 2, "dim must be equal to 2");
-    MCM_ASSERT(k < 3, "k must be less than 3");
+    MCM_ASSERT(k < 4, "k must be less than 4");
     double xx[2] = {x[0] - .5, x[1] - .5};
     switch (n)
     {
     case 0:
-        return 1.;
+        return Phi0(xx[0]) * Phi0(xx[1]);
     case 1:
-        return xx[0];
+        return Phi1(xx[0]) * Phi0(xx[1]);
     case 2:
-        return xx[1];
+        return Phi0(xx[0]) * Phi1(xx[1]);
     case 3:
-        return xx[0] * xx[0] - 1. / 12.;
+        return Phi2(xx[0]) * Phi0(xx[1]);
     case 4:
-        return xx[0] * xx[1];
+        return Phi1(xx[0]) * Phi1(xx[1]);
     case 5:
-        return xx[1] * xx[1] - 1. / 12.;
+        return Phi0(xx[0]) * Phi2(xx[1]);
+    case 6:
+        return Phi3(xx[0]) * Phi0(xx[1]);
+    case 7:
+        return Phi2(xx[0]) * Phi1(xx[1]);
+    case 8:
+        return Phi1(xx[0]) * Phi2(xx[1]);
+    case 9:
+        return Phi0(xx[0]) * Phi3(xx[1]);
+    case 10:
+        return Phi4(xx[0]) * Phi0(xx[1]);
+    case 11:
+        return Phi3(xx[0]) * Phi1(xx[1]);
+    case 12:
+        return Phi2(xx[0]) * Phi2(xx[1]);
+    case 13:
+        return Phi1(xx[0]) * Phi3(xx[1]);
+    case 14:
+        return Phi0(xx[0]) * Phi4(xx[1]);
     }
-    return 0.;
+    MCM_ABORT("bad n");
+    return 0.;  // make compiler happy
 }
 
 double CalcWeightedSum(const int n, const double *w, const double *x)

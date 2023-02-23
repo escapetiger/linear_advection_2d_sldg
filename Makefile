@@ -75,7 +75,7 @@ DATA_DIR = $(MAIN_DIR)/data
 
 .PHONY: run
 run:
-	@make && $(MAIN_DIR)/main -Nx 4 -Ny 4 -T 0.001 -CFL 1.0 -O 1 
+	@make && $(MAIN_DIR)/main -Nx 4 -Ny 4 -T 1.00 -CFL 0.66 -O 1 
 	# @gnuplot -p -c $(DATA_DIR)/plot_u_2D.gp
 
 #======================================================================
