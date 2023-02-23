@@ -4,9 +4,7 @@
 #include "globals.h"
 #include "kernels.h"
 
-static constexpr int kMAX_N_DOF = 25;
-static constexpr int kMAX_N_GL_1D = 6;
-static constexpr int kMAX_N_GL_2D = 36;
+
 
 /** Solve u_t + a*u_x + b*u_y = 0 */
 
@@ -73,15 +71,16 @@ public:
     double **mat_v_u_2D; ///< DG matrix: v*u
 
     // local data structures
-    int N_node;    ///< number of nodes
-    int N_edge;    ///< number of edges
-    int N_elem;    ///< number of elements
-    NodeE *node_e; ///< global Eulerian node buffer
-    NodeU *node_u; ///< global Upstream node buffer
-    EdgeE *edge_e; ///< global Eulerian edge buffer
-    EdgeU *edge_u; ///< global Upstream edge buffer
-    ElemE *elem_e; ///< global Eulerian element buffer
-    ElemU *elem_u; ///< global Upstream element buffer
+    int N_node;        ///< number of nodes
+    int N_edge;        ///< number of edges
+    int N_elem;        ///< number of elements
+    NodeE *node_e_buf; ///< global Eulerian node buffer
+    NodeU *node_u_buf; ///< global Upstream node buffer
+    EdgeE *edge_e_buf; ///< global Eulerian edge buffer
+    EdgeU *edge_u_buf; ///< global Upstream edge buffer
+    ElemE *elem_e_buf; ///< global Eulerian element buffer
+    ElemU *elem_u_buf; ///< global Upstream element buffer
+    ElemR ref_buf;     ///< global Reference element buffer
 
     // global algebraic elements: vectors and matrices
     int N_dof_glo; ///< number of global degrees freedom
@@ -116,14 +115,12 @@ private:
     void TrackBack();
     void Assemble();
     void Clipping();
-    void ClipElemU(ElemU *elem);
-    void ClipElemE(ElemE *elem, ElemU *eu);
-    void FinalizeClip(int par_e, ElemE *elem, ElemU *eu);
-    void SetQuadRule();
-    void MakeSubQuadRuleE(ElemE *elem, SubElem *sub);
-    void MakeSubQuadRuleU(ElemU *elem, SubElem *sub);
-    double CalcElemEPkBasis(const int k, ElemE *elem, double *x);
-    double CalcElemUPkBasis(const int k, ElemU *elem, SubElem *sub, double *x);
+    void ClipREF();
+    void ClipElem(ElemU *elem_u);
+    void ClipElem(ElemE *elem_e);
+    void MakeQuadRuleREF();
+    double CalcElemEPkBasis(int k, double *x, ElemE *elem);
+    double CalcElemUPkBasis(int k, double *x, ElemU *elem, int sub_par);
     void Step();
     void SetZero(int size, double *v);
     void CopyL2G(int size, double *v);

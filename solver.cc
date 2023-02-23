@@ -62,12 +62,12 @@ void Solver::ReadMesh()
     // allocation
     x_grid = NewVector<double>(Nx + 1);
     y_grid = NewVector<double>(Ny + 1);
-    node_e = NewVector<NodeE>(N_node);
-    node_u = NewVector<NodeU>(N_node);
-    edge_e = NewVector<EdgeE>(N_edge);
-    edge_u = NewVector<EdgeU>(N_edge);
-    elem_e = NewVector<ElemE>(N_elem);
-    elem_u = NewVector<ElemU>(N_elem);
+    node_e_buf = NewVector<NodeE>(N_node);
+    node_u_buf = NewVector<NodeU>(N_node);
+    edge_e_buf = NewVector<EdgeE>(N_edge);
+    edge_u_buf = NewVector<EdgeU>(N_edge);
+    elem_e_buf = NewVector<ElemE>(N_elem);
+    elem_u_buf = NewVector<ElemU>(N_elem);
 
     // make grid lines
     hx = (xmax - xmin) / (double)Nx;
@@ -87,7 +87,7 @@ void Solver::ReadMesh()
         for (ix = 0; ix < Gx; ix++)
         {
             io = Index2D(ix, iy, Gx, Gy);
-            node_e[io].pos = {x_grid[ix], y_grid[iy]};
+            node_e_buf[io].pos = {x_grid[ix], y_grid[iy]};
         }
     }
 
@@ -101,13 +101,13 @@ void Solver::ReadMesh()
             id[1] = Index2D(ix + 1, iy, Gx, Gy);
             if (iy % 2 == 0)
             {
-                edge_e[io].beg = id[0];
-                edge_e[io].end = id[1];
+                edge_e_buf[io].beg = id[0];
+                edge_e_buf[io].end = id[1];
             }
             else
             {
-                edge_e[io].beg = id[1];
-                edge_e[io].end = id[0];
+                edge_e_buf[io].beg = id[1];
+                edge_e_buf[io].end = id[0];
             }
         }
     }
@@ -120,13 +120,13 @@ void Solver::ReadMesh()
             id[1] = Index2D(ix, iy + 1, Gx, Gy);
             if (ix % 2 == 0)
             {
-                edge_e[io].beg = id[1];
-                edge_e[io].end = id[0];
+                edge_e_buf[io].beg = id[1];
+                edge_e_buf[io].end = id[0];
             }
             else
             {
-                edge_e[io].beg = id[0];
-                edge_e[io].end = id[1];
+                edge_e_buf[io].beg = id[0];
+                edge_e_buf[io].end = id[1];
             }
         }
     }
@@ -137,21 +137,21 @@ void Solver::ReadMesh()
         for (ix = 0; ix < Nx; ix++)
         {
             io = Index2D(ix, iy, Nx, Ny);
-            elem_e[io].nvert = 4;
-            elem_e[io].nedge = 4;
-            elem_e[io].ndof = N_dof_loc;
-            elem_e[io].vert_buf[0] = Index2D(ix, iy, Gx, Gy);
-            elem_e[io].vert_buf[1] = Index2D(ix + 1, iy, Gx, Gy);
-            elem_e[io].vert_buf[2] = Index2D(ix + 1, iy + 1, Gx, Gy);
-            elem_e[io].vert_buf[3] = Index2D(ix, iy + 1, Gx, Gy);
-            elem_e[io].edge_buf[0] = Index2D(ix, iy, Nx, Gy);
-            elem_e[io].edge_buf[1] = Nx * Gy + Index2D(ix + 1, iy, Gx, Ny);
-            elem_e[io].edge_buf[2] = Index2D(ix, iy + 1, Nx, Gy);
-            elem_e[io].edge_buf[3] = Nx * Gy + Index2D(ix, iy, Gx, Ny);
-            elem_e[io].p0.x = node_e[elem_e[io].vert_buf[0]].pos.x;
-            elem_e[io].p0.y = node_e[elem_e[io].vert_buf[0]].pos.y;
-            elem_e[io].p1.x = node_e[elem_e[io].vert_buf[2]].pos.x;
-            elem_e[io].p1.y = node_e[elem_e[io].vert_buf[2]].pos.y;
+            elem_e_buf[io].nvert = 4;
+            elem_e_buf[io].nedge = 4;
+            elem_e_buf[io].ndof = N_dof_loc;
+            elem_e_buf[io].vert_buf[0] = Index2D(ix, iy, Gx, Gy);
+            elem_e_buf[io].vert_buf[1] = Index2D(ix + 1, iy, Gx, Gy);
+            elem_e_buf[io].vert_buf[2] = Index2D(ix + 1, iy + 1, Gx, Gy);
+            elem_e_buf[io].vert_buf[3] = Index2D(ix, iy + 1, Gx, Gy);
+            elem_e_buf[io].edge_buf[0] = Index2D(ix, iy, Nx, Gy);
+            elem_e_buf[io].edge_buf[1] = Nx * Gy + Index2D(ix + 1, iy, Gx, Ny);
+            elem_e_buf[io].edge_buf[2] = Index2D(ix, iy + 1, Nx, Gy);
+            elem_e_buf[io].edge_buf[3] = Nx * Gy + Index2D(ix, iy, Gx, Ny);
+            elem_e_buf[io].p0.x = node_e_buf[elem_e_buf[io].vert_buf[0]].pos.x;
+            elem_e_buf[io].p0.y = node_e_buf[elem_e_buf[io].vert_buf[0]].pos.y;
+            elem_e_buf[io].p1.x = node_e_buf[elem_e_buf[io].vert_buf[2]].pos.x;
+            elem_e_buf[io].p1.y = node_e_buf[elem_e_buf[io].vert_buf[2]].pos.y;
         }
     }
 }
@@ -238,8 +238,8 @@ void Solver::ReadDG()
         for (ix = 0; ix < Nx; ix++)
         {
             io = Index2D(ix, iy, Nx, Ny);
-            elem_e[io].ndof = N_dof_loc;
-            elem_e[io].udof = NewVector<double>(N_dof_loc);
+            elem_e_buf[io].ndof = N_dof_loc;
+            elem_e_buf[io].udof = NewVector<double>(N_dof_loc);
         }
     }
 
@@ -277,7 +277,6 @@ void Solver::Simulate()
         {
             TrackBack();
             Clipping();
-            SetQuadRule();
         }
 
         // evolute solution
@@ -335,7 +334,7 @@ void Solver::CalcResidual()
                 e_point = 0.0;
                 for (j = 0; j < N_dof_loc; j++)
                 {
-                    e_point += elem_e[io].udof[j] * v_GL_new[k][j];
+                    e_point += elem_e_buf[io].udof[j] * v_GL_new[k][j];
                 }
 
                 e_point -= ExactData(tmax, x[0], x[1]);
@@ -391,7 +390,7 @@ void Solver::OutputSolution2D(const char *file)
             uc = 0.;
             for (j = 0; j < N_dof_loc; j++)
             {
-                uc += elem_e[io].udof[j] * v_XC_YC_2D[j];
+                uc += elem_e_buf[io].udof[j] * v_XC_YC_2D[j];
             }
 
             uc_exact = ExactData(tmax, xc, yc);
@@ -429,15 +428,15 @@ void Solver::Destroy()
 
     for (int i = 0; i < N_elem; i++)
     {
-        DeleteVector<double>(elem_e[i].udof, N_dof_loc);
+        DeleteVector<double>(elem_e_buf[i].udof, N_dof_loc);
     }
 
-    DeleteVector<NodeE>(node_e, N_node);
-    DeleteVector<NodeU>(node_u, N_node);
-    DeleteVector<EdgeE>(edge_e, N_edge);
-    DeleteVector<EdgeU>(edge_u, N_edge);
-    DeleteVector<ElemE>(elem_e, N_elem);
-    DeleteVector<ElemU>(elem_u, N_elem);
+    DeleteVector<NodeE>(node_e_buf, N_node);
+    DeleteVector<NodeU>(node_u_buf, N_node);
+    DeleteVector<EdgeE>(edge_e_buf, N_edge);
+    DeleteVector<EdgeU>(edge_u_buf, N_edge);
+    DeleteVector<ElemE>(elem_e_buf, N_elem);
+    DeleteVector<ElemU>(elem_u_buf, N_elem);
 }
 
 double Solver::InitData(double x, double y)
@@ -454,7 +453,7 @@ void Solver::Project()
 {
     // declarations
     int ix, iy, io, j, k;
-    double a[kMAX_N_DOF];
+    double a[MAX_DOF];
     double f_GL_2D_k, x_GL_2D_k, y_GL_2D_k;
 
     // initialization: reference data
@@ -475,15 +474,15 @@ void Solver::Project()
             io = Index2D(ix, iy, Nx, Ny);
             for (j = 0; j < N_dof_loc; j++)
             {
-                elem_e[io].udof[j] = 0.;
+                elem_e_buf[io].udof[j] = 0.;
                 for (k = 0; k < N_GL_2D; k++)
                 {
                     x_GL_2D_k = x_grid[ix] + hx * x_GL_2D[k];
                     y_GL_2D_k = y_grid[iy] + hy * y_GL_2D[k];
                     f_GL_2D_k = InitData(x_GL_2D_k, y_GL_2D_k);
-                    elem_e[io].udof[j] += w_GL_2D[k] * f_GL_2D_k * v_GL_2D[j][k];
+                    elem_e_buf[io].udof[j] += w_GL_2D[k] * f_GL_2D_k * v_GL_2D[j][k];
                 }
-                elem_e[io].udof[j] /= a[j];
+                elem_e_buf[io].udof[j] /= a[j];
             }
         }
     }
@@ -503,8 +502,8 @@ void Solver::TrackBack()
     int i, jx, jy, k;
     for (i = 0; i < N_node; i++)
     {
-        node_u[i].pos.x = node_e[i].pos.x - ax * ht;
-        node_u[i].pos.y = node_e[i].pos.y - ay * ht;
+        node_u_buf[i].pos.x = node_e_buf[i].pos.x - ax * ht;
+        node_u_buf[i].pos.y = node_e_buf[i].pos.y - ay * ht;
 
         // periodic BC
         // node_u[i].pos.x = Circulate(node_u[i].pos.x, xmin, xmax);
@@ -512,7 +511,7 @@ void Solver::TrackBack()
 
         for (jx = 0; jx < Nx + 1; jx++)
         {
-            if (FuzzyLT(node_u[i].pos.x, x_grid[jx]))
+            if (FuzzyLT(node_u_buf[i].pos.x, x_grid[jx]))
             {
                 break;
             }
@@ -520,219 +519,155 @@ void Solver::TrackBack()
 
         for (jy = 0; jy < Ny + 1; jy++)
         {
-            if (FuzzyLT(node_u[i].pos.y, y_grid[jy]))
+            if (FuzzyLT(node_u_buf[i].pos.y, y_grid[jy]))
             {
                 break;
             }
         }
 
-        node_u[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
-        if (node_u[i].par < 0 || node_u[i].par >= Nx * Ny)
+        node_u_buf[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
+        if (node_u_buf[i].par < 0 || node_u_buf[i].par >= Nx * Ny)
         {
-            node_u[i].par = -1;
+            node_u_buf[i].par = -1;
         }
     }
 
     // track EdgeE to EdgeU
     for (i = 0; i < N_edge; i++)
     {
-        edge_u[i].beg = edge_e[i].beg;
-        edge_u[i].end = edge_e[i].end;
+        edge_u_buf[i].beg = edge_e_buf[i].beg;
+        edge_u_buf[i].end = edge_e_buf[i].end;
     }
 
     // track ElemE to ElemU
     for (i = 0; i < N_elem; i++)
     {
-        elem_u[i].nvert = elem_e[i].nvert;
-        elem_u[i].nedge = elem_e[i].nedge;
-        for (k = 0; k < elem_u[i].nvert; k++)
+        elem_u_buf[i].nvert = elem_e_buf[i].nvert;
+        elem_u_buf[i].nedge = elem_e_buf[i].nedge;
+        for (k = 0; k < elem_u_buf[i].nvert; k++)
         {
-            elem_u[i].vert_buf[k] = elem_e[i].vert_buf[k];
+            elem_u_buf[i].vert_buf[k] = elem_e_buf[i].vert_buf[k];
         }
-        for (k = 0; k < elem_u[i].nedge; k++)
+        for (k = 0; k < elem_u_buf[i].nedge; k++)
         {
-            elem_u[i].edge_buf[k] = elem_e[i].edge_buf[k];
+            elem_u_buf[i].edge_buf[k] = elem_e_buf[i].edge_buf[k];
         }
-        elem_u[i].p0.x = elem_e[i].p0.x - ax * ht;
-        elem_u[i].p0.y = elem_e[i].p0.y - ay * ht;
-        elem_u[i].p1.x = elem_e[i].p1.x - ax * ht;
-        elem_u[i].p1.y = elem_e[i].p1.y - ay * ht;
+        elem_u_buf[i].p0.x = elem_e_buf[i].p0.x - ax * ht;
+        elem_u_buf[i].p0.y = elem_e_buf[i].p0.y - ay * ht;
+        elem_u_buf[i].p1.x = elem_e_buf[i].p1.x - ax * ht;
+        elem_u_buf[i].p1.y = elem_e_buf[i].p1.y - ay * ht;
     }
 }
 
 void Solver::Clipping()
 {
     int i;
+    ClipREF();
     for (i = 0; i < N_elem; i++)
     {
-        ClipElemU(&elem_u[i]);
-        ClipElemE(&elem_e[i], &elem_u[i]);
-        FinalizeClip(i, &elem_e[i], &elem_u[i]);
+        // clip ElemU and set QuadRuleU
+        ClipElem(&elem_u_buf[i]);
+        // clip ElemE and set QuadRuleE
+        ClipElem(&elem_e_buf[i]);
     }
+#ifdef FAST_SLDG
+    MakeQuadRuleREF(); // fast computing
+#endif
 }
 
-void Solver::ClipElemU(ElemU *eu)
+void Solver::ClipREF()
 {
     double x0, y0, x1, y1, rx, ry, x, y, dx, dy;
-    x0 = eu->p0.x;
-    y0 = eu->p0.y;
-    x1 = eu->p1.x;
-    y1 = eu->p1.y;
-    // x1_u-xmin = k*h+r, -h<r<h
-    // r < 0, x = k*h-h = x1_u-xmin-r-h
-    // r > 0, x = k*h = x1_u-xmin-r
-    // r == 0, x = x1_u-xmin
-    rx = fmod(x1, hx);
-    if (rx < 0)
-    {
-        x = x1 - xmin - rx - hx;
-    }
-    else if (rx > 0)
-    {
-        x = x1 - xmin - rx;
-    }
-    else
-    {
-        x = x1 - xmin;
-    }
-    ry = fmod(y1, hy);
-    if (ry < 0)
-    {
-        y = y1 - ymin - ry - hy;
-    }
-    else if (ry > 0)
-    {
-        y = y1 - ymin - ry;
-    }
-    else
-    {
-        y = y1 - ymin;
-    }
-    eu->poi.x = (x - x0) / hx;
-    eu->poi.y = (y - y0) / hy;
+    x0 = ref_buf.p0.x - ax * ht / hx;
+    y0 = ref_buf.p0.y - ay * ht / hy;
+    x1 = ref_buf.p1.x - ax * ht / hx;
+    y1 = ref_buf.p1.y - ay * ht / hy;
+    // x0 = i*hx-a*ht, x1 = (i+1)*hx-a*ht;
+    // xx0 = -a*ht/hx, xx1 = 1-a*ht/hx;
+    // 1 = k+r, -1<r<1
+    // r < 0, xx = k-1 = -r
+    // r > 0, xx = k = 1-r
+    // r = 0, xx = 1
+    // we have x0 < x = x0+xx*hx < x1.
+    rx = fmod(x1, 1.);
+    x = (rx < 0) ? -rx : 1. - rx;
+    ry = fmod(y1, 1.);
+    y = (ry < 0) ? -ry : 1. - ry;
+
+    ref_buf.poi.x = x;
+    ref_buf.poi.y = y;
 
     // add SubElems
-    eu->nsub = 0;
+    ref_buf.nsub = 0;
+    x0 = ref_buf.p0.x;
+    y0 = ref_buf.p0.y;
+    x1 = ref_buf.p1.x;
+    y1 = ref_buf.p1.y;
     // left bottom SubElem
     dx = fabs(x - x0);
     dy = fabs(y - y0);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        eu->sub_buf[eu->nsub].p0.x = x0;
-        eu->sub_buf[eu->nsub].p0.y = y0;
-        eu->sub_buf[eu->nsub].p1.x = x;
-        eu->sub_buf[eu->nsub].p1.y = y;
-        eu->nsub++;
+        ref_buf.sub_buf[ref_buf.nsub].p0.x = x0;
+        ref_buf.sub_buf[ref_buf.nsub].p0.y = y0;
+        ref_buf.sub_buf[ref_buf.nsub].p1.x = x;
+        ref_buf.sub_buf[ref_buf.nsub].p1.y = y;
+        ref_buf.nsub++;
     }
     // right bottom SubElem
     dx = fabs(x1 - x);
     dy = fabs(y - y0);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        eu->sub_buf[eu->nsub].p0.x = x;
-        eu->sub_buf[eu->nsub].p0.y = y0;
-        eu->sub_buf[eu->nsub].p1.x = x1;
-        eu->sub_buf[eu->nsub].p1.y = y;
-        eu->nsub++;
+        ref_buf.sub_buf[ref_buf.nsub].p0.x = x;
+        ref_buf.sub_buf[ref_buf.nsub].p0.y = y0;
+        ref_buf.sub_buf[ref_buf.nsub].p1.x = x1;
+        ref_buf.sub_buf[ref_buf.nsub].p1.y = y;
+        ref_buf.nsub++;
     }
     // right top SubElem
     dx = fabs(x1 - x);
     dy = fabs(y1 - y);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        eu->sub_buf[eu->nsub].p0.x = x;
-        eu->sub_buf[eu->nsub].p0.y = y;
-        eu->sub_buf[eu->nsub].p1.x = x1;
-        eu->sub_buf[eu->nsub].p1.y = y1;
-        eu->nsub++;
+        ref_buf.sub_buf[ref_buf.nsub].p0.x = x;
+        ref_buf.sub_buf[ref_buf.nsub].p0.y = y;
+        ref_buf.sub_buf[ref_buf.nsub].p1.x = x1;
+        ref_buf.sub_buf[ref_buf.nsub].p1.y = y1;
+        ref_buf.nsub++;
     }
     // left top SubElem
     dx = fabs(x - x0);
     dy = fabs(y1 - y);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        eu->sub_buf[eu->nsub].p0.x = x0;
-        eu->sub_buf[eu->nsub].p0.y = y;
-        eu->sub_buf[eu->nsub].p1.x = x;
-        eu->sub_buf[eu->nsub].p1.y = y1;
-        eu->nsub++;
+        ref_buf.sub_buf[ref_buf.nsub].p0.x = x0;
+        ref_buf.sub_buf[ref_buf.nsub].p0.y = y;
+        ref_buf.sub_buf[ref_buf.nsub].p1.x = x;
+        ref_buf.sub_buf[ref_buf.nsub].p1.y = y1;
+        ref_buf.nsub++;
     }
 }
 
-void Solver::ClipElemE(ElemE *ee, ElemU *eu)
+void Solver::ClipElem(ElemU *elem_u)
 {
-    double x0, y0, x1, y1, x, y, dx, dy;
-    x0 = ee->p0.x;
-    y0 = ee->p0.y;
-    x1 = ee->p1.x;
-    y1 = ee->p1.y;
-    ee->poi.x = eu->poi.x;
-    ee->poi.y = eu->poi.y;
-    x = ee->p0.x + ee->poi.x * hx;
-    y = ee->p0.y + ee->poi.y * hy;
-
-    // add SubElems
-    ee->nsub = 0;
-    // left bottom SubElem
-    dx = fabs(x - x0);
-    dy = fabs(y - y0);
-    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
+    int i, jx, jy, k;
+    double x0, y0, x1, y1, cx, cy, dx, dy, dxy;
+    // find parents
+    for (i = 0; i < ref_buf.nsub; i++)
     {
-        ee->sub_buf[ee->nsub].p0.x = x0;
-        ee->sub_buf[ee->nsub].p0.y = y0;
-        ee->sub_buf[ee->nsub].p1.x = x;
-        ee->sub_buf[ee->nsub].p1.y = y;
-        ee->nsub++;
-    }
-    // right bottom SubElem
-    dx = fabs(x1 - x);
-    dy = fabs(y - y0);
-    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
-    {
-        ee->sub_buf[ee->nsub].p0.x = x;
-        ee->sub_buf[ee->nsub].p0.y = y0;
-        ee->sub_buf[ee->nsub].p1.x = x1;
-        ee->sub_buf[ee->nsub].p1.y = y;
-        ee->nsub++;
-    }
-    // right top SubElem
-    dx = fabs(x1 - x);
-    dy = fabs(y1 - y);
-    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
-    {
-        ee->sub_buf[ee->nsub].p0.x = x;
-        ee->sub_buf[ee->nsub].p0.y = y;
-        ee->sub_buf[ee->nsub].p1.x = x1;
-        ee->sub_buf[ee->nsub].p1.y = y1;
-        ee->nsub++;
-    }
-    // left top SubElem
-    dx = fabs(x - x0);
-    dy = fabs(y1 - y);
-    if (!(FuzzyZero(dx) || FuzzyZero(dy)))
-    {
-        ee->sub_buf[ee->nsub].p0.x = x0;
-        ee->sub_buf[ee->nsub].p0.y = y;
-        ee->sub_buf[ee->nsub].p1.x = x;
-        ee->sub_buf[ee->nsub].p1.y = y1;
-        ee->nsub++;
-    }
-}
-
-void Solver::FinalizeClip(int par_e, ElemE *ee, ElemU *eu)
-{
-    int i, jx, jy;
-    double cx, cy;
-    for (i = 0; i < ee->nsub; i++)
-    {
-        ee->sub_buf[i].par = par_e;
-    }
-    for (i = 0; i < eu->nsub; i++)
-    {
-        cx = (eu->sub_buf[i].p0.x + eu->sub_buf[i].p1.x) / 2.;
-        cy = (eu->sub_buf[i].p0.y + eu->sub_buf[i].p1.y) / 2.;
+        x0 = elem_u->p0.x + ref_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        dy = fabs(y1 - y0);
+        dxy = dx * dy;
+        cx = (x0 + x1) / 2.;
+        cy = (y0 + y1) / 2.;
         cx = Circulate(cx, xmin, xmax);
         cy = Circulate(cy, ymin, ymax);
+
         for (jx = 0; jx < Nx + 1; jx++)
         {
             if (FuzzyLT(cx, x_grid[jx]))
@@ -749,56 +684,89 @@ void Solver::FinalizeClip(int par_e, ElemE *ee, ElemU *eu)
             }
         }
 
-        eu->sub_buf[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
-    }
-}
+        elem_u->qr.par_buf[i] = Index2D(jx - 1, jy - 1, Nx, Ny);
 
-void Solver::SetQuadRule()
-{
-    int i, j;
-    for (i = 0; i < N_elem; i++)
-    {
-        for (j = 0; j < 4; j++)
+        for (k = 0; k < N_GL_2D; k++)
         {
-            MakeSubQuadRuleE(&elem_e[i], &elem_e[i].sub_buf[j]);
-            MakeSubQuadRuleU(&elem_u[i], &elem_u[i].sub_buf[j]);
+            // This is for periodic BC
+            elem_u->qr.qp_buf[i][k].x = Circulate(x0 + dx * x_GL_2D[k], xmin, xmax);
+            elem_u->qr.qp_buf[i][k].y = Circulate(y0 + dy * y_GL_2D[k], xmin, xmax);
+
+            // This is for other BC
+            // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
+            // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
+            elem_u->qr.qp_buf[i][k].w = w_GL_2D[k] * dxy;
         }
     }
 }
 
-void Solver::MakeSubQuadRuleE(ElemE *elem, SubElem *sub)
+void Solver::ClipElem(ElemE *elem_e)
 {
-    int i;
-    double dx, dy, dxy;
-    dx = fabs(sub->p1.x - sub->p0.x);
-    dy = fabs(sub->p1.y - sub->p0.y);
-    dxy = dx * dy;
-
-    for (i = 0; i < N_GL_2D; i++)
+    int i, j;
+    double x0, y0, x1, y1, dx, dy, dxy;
+    for (i = 0; i < ref_buf.nsub; i++)
     {
-        sub->qp[i].x = sub->p0.x + dx * x_GL_2D[i];
-        sub->qp[i].y = sub->p0.y + dy * y_GL_2D[i];
-        sub->qp[i].w = w_GL_2D[i] * dxy;
+        x0 = elem_e->p0.x + ref_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        dy = fabs(y1 - y0);
+        dxy = dx * dy;
+        for (j = 0; j < N_GL_2D; j++)
+        {
+            elem_e->qr.qp_buf[i][j].x = x0 + dx * x_GL_2D[j];
+            elem_e->qr.qp_buf[i][j].y = y0 + dy * y_GL_2D[j];
+            elem_e->qr.qp_buf[i][j].w = w_GL_2D[j] * dxy;
+        }
     }
 }
 
-void Solver::MakeSubQuadRuleU(ElemU *elem, SubElem *sub)
+void Solver::MakeQuadRuleREF()
 {
-    int i;
-    double dx, dy, dxy;
-    dx = fabs(sub->p1.x - sub->p0.x);
-    dy = fabs(sub->p1.y - sub->p0.y);
-    dxy = dx * dy;
-
-    for (i = 0; i < N_GL_2D; i++)
+    int i, j, k;
+    double x0, y0;
+    ElemE *elem_e = &elem_e_buf[0];
+    ElemU *elem_u = &elem_u_buf[0];
+    for (i = 0; i < ref_buf.nsub; i++)
     {
-        sub->qp[i].x = sub->p0.x + dx * x_GL_2D[i];
-        sub->qp[i].y = sub->p0.y + dy * y_GL_2D[i];
-        sub->qp[i].w = w_GL_2D[i] * dxy;
+        // reference QuadRule for ElemE
+        x0 = elem_e->p0.x;
+        y0 = elem_e->p0.y;
+        for (j = 0; j < N_GL_2D; j++)
+        {
+            ref_buf.qp_e_buf[i][j].x = (elem_e->qr.qp_buf[i][j].x - x0) / hx;
+            ref_buf.qp_e_buf[i][j].y = (elem_e->qr.qp_buf[i][j].y - y0) / hy;
+            ref_buf.qp_e_buf[i][j].w = elem_e->qr.qp_buf[i][j].w / (hx * hy);
+        }
 
-        // periodic BC
-        sub->qp[i].x = Circulate(sub->qp[i].x, xmin, xmax);
-        sub->qp[i].y = Circulate(sub->qp[i].y, ymin, ymax);
+        // reference QuadRule for ElemU
+        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        for (j = 0; j < N_GL_2D; j++)
+        {
+            ref_buf.qp_u_buf[i][j].x = (elem_u->qr.qp_buf[i][j].x - x0) / hx;
+            ref_buf.qp_u_buf[i][j].y = (elem_u->qr.qp_buf[i][j].y - y0) / hy;
+            ref_buf.qp_u_buf[i][j].w = elem_u->qr.qp_buf[i][j].w / (hx * hy);
+        }
+
+        // reference basis values for ElemE
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_2D; k++)
+            {
+                ref_buf.v_qp_e_buf[i][j][k] = CalcPkBasis(2, P, j, ref_buf.qp_e_buf[i][k].xy);
+            }
+        }
+
+        // reference basis values for ElemU
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_2D; k++)
+            {
+                ref_buf.v_qp_u_buf[i][j][k] = CalcPkBasis(2, P, j, ref_buf.qp_u_buf[i][k].xy);
+            }
+        }
     }
 }
 
@@ -806,36 +774,48 @@ void Solver::Assemble()
 {
     int i, j, k, l, m, jg;
     double u, v, udof, mass;
-    QuadPoint *qe, *qu;
     for (i = 0; i < N_elem; i++)
     {
         for (j = 0; j < N_dof_loc; j++)
         {
             jg = Index2D(i, j, N_elem, N_dof_loc);
             mass = hx * hy * mat_v_u_2D[j][j];
-            for (l = 0; l < elem_e[i].nsub; l++)
+            for (l = 0; l < ref_buf.nsub; l++)
             {
                 for (m = 0; m < N_GL_2D; m++)
                 {
-                    qe = &elem_e[i].sub_buf[l].qp[m];
-                    qu = &elem_u[i].sub_buf[l].qp[m];
+#ifndef FAST_SLDG
+                    QuadPoint *qe, *qu;
+                    qe = &elem_e_buf[i].qr.qp_buf[l][m];
+                    qu = &elem_u_buf[i].qr.qp_buf[l][m];
                     u = 0.;
-                    v = CalcElemEPkBasis(j, &elem_e[i], qe->xy);
+                    v = CalcElemEPkBasis(j, qe->xy, &elem_e_buf[i]);
                     for (k = 0; k < N_dof_loc; k++)
                     {
-                        udof = elem_e[elem_u[i].sub_buf[l].par].udof[k];
-                        u += udof * CalcElemUPkBasis(k, &elem_u[i], &elem_u[i].sub_buf[l], qu->xy);
+                        udof = elem_e_buf[elem_u_buf[i].qr.par_buf[l]].udof[k];
+                        u += udof * CalcElemUPkBasis(k, qu->xy, &elem_u_buf[i], elem_u_buf[i].qr.par_buf[l]);
                     }
+                    U_RHS[jg] += qe->w * u * v / mass;
+#else
+                    u = 0.;
+                    v = ref_buf.v_qp_e_buf[l][j][m];
+                    for (k = 0; k < N_dof_loc; k++)
+                    {
+                        udof = elem_e_buf[elem_u_buf[i].qr.par_buf[l]].udof[k];
+                        u += udof * ref_buf.v_qp_u_buf[l][k][m];
+                    }
+                    u *= hx * hy;
+                    U_RHS[jg] += ref_buf.qp_e_buf[l][m].w * u * v / mass;
+#endif
                     // std::cout << std::fixed << std::setprecision(8);
                     // std::cout << i << ' ' << j << ' ' << u << ' ' << v << ' ' << qe->w << '\n';
-                    U_RHS[jg] += qe->w * u * v / mass;
                 }
             }
         }
     }
 }
 
-double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
+double Solver::CalcElemEPkBasis(int k, double *x, ElemE *elem)
 {
     bool outside = (FuzzyLT(x[0], elem->p0.x)) || (FuzzyGT(x[0], elem->p1.x)) ||
                    (FuzzyLT(x[1], elem->p0.y)) || (FuzzyGT(x[1], elem->p1.y));
@@ -851,9 +831,9 @@ double Solver::CalcElemEPkBasis(const int k, ElemE *elem, double *x)
     return CalcPkBasis(2, P, k, xx);
 }
 
-double Solver::CalcElemUPkBasis(const int k, ElemU *elem, SubElem *sub, double *x)
+double Solver::CalcElemUPkBasis(int k, double *x, ElemU *elem, int sub_par)
 {
-    return CalcElemEPkBasis(k, &elem_e[sub->par], x);
+    return CalcElemEPkBasis(k, x, &elem_e_buf[sub_par]);
 }
 
 void Solver::Step()
@@ -882,7 +862,7 @@ void Solver::CopyL2G(const int size, double *v)
     {
         for (int j = 0; j < N_dof_loc; j++)
         {
-            v[Index2D(i, j, N_elem, N_dof_loc)] = elem_e[i].udof[j];
+            v[Index2D(i, j, N_elem, N_dof_loc)] = elem_e_buf[i].udof[j];
         }
     }
 }
@@ -893,7 +873,7 @@ void Solver::CopyG2L(int size, const double *v)
     {
         for (int j = 0; j < N_dof_loc; j++)
         {
-            elem_e[i].udof[j] = v[Index2D(i, j, N_elem, N_dof_loc)];
+            elem_e_buf[i].udof[j] = v[Index2D(i, j, N_elem, N_dof_loc)];
         }
     }
 }

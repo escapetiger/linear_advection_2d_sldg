@@ -28,7 +28,9 @@ CXXFLAGS  = -std=c++17 -Wall -O3 -g
 CXXFLAGS += -MT $@ -MMD -MP -MF $(DEP_DIR)/$*$(DEP_EXT)
 CXXFLAGS += $(INC_DIR:%=-I %)
 CXXFLAGS += -fopenmp
-CXXFLAGS += -DWITHOUT_NUMPY -DMKL_ILP64
+CXXFLAGS += -DWITHOUT_NUMPY -DMKL_ILP64 
+CXXFLAGS += -DMCM_USE_DBL_EPSILON
+CXXFLAGS += -DFAST_SLDG
 # CXXFLAGS += -DMCM_DEBUG
 LDFLAGS   = $(LIB_DIR:%=-L %)
 LDFLAGS  += -lmcm
@@ -75,7 +77,7 @@ DATA_DIR = $(MAIN_DIR)/data
 
 .PHONY: run
 run:
-	@make && $(MAIN_DIR)/main -Nx 8 -Ny 8 -T 0.1 -CFL 0.8 -O 2 
+	@make && $(MAIN_DIR)/main -Nx 4 -Ny 4 -T 0.001 -CFL 1.0 -O 3 
 	# @gnuplot -p -c $(DATA_DIR)/plot_u_2D.gp
 
 #======================================================================

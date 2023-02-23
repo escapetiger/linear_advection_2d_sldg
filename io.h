@@ -23,8 +23,7 @@ public:
     void PrintNodeU(const char *file);
     void PrintEdgeU(const char *file);
     void PrintElemU(const char *file);
-    void PrintSubElemBufU(const char *file);
-    void PrintSubElemBufE(const char *file);
+    void PrintRefBuf(const char *file);
     void PrintQuadRule(const char *file);
 };
 
