@@ -15,3 +15,4 @@ Error order tests for order = 1, 2, 3, 4, 5 are passed.
 
 Fast implementation for uniform mesh. This idea is easy to be extended to 3D case.
 
+Only periodic boundary conditions are considered.
