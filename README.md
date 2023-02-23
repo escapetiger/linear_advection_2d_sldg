@@ -9,14 +9,16 @@ REFERENCES  :
 
 ---
 
-## 2023/2/24 
+## update at 2023/2/25
+
+Universal fast implementation for uniform mesh, 10 times faster than VERSION 2.0.
+
+BENCHMARK:
 
 Error order tests for order = 1, 2, 3, 4, 5 are passed. 
-
-Fast implementation for uniform mesh. This idea is easy to be extended to 3D case.
-
 Only periodic boundary conditions are considered.
 
-## 2023/2/25
+FUTURE WORK:
 
-Universal implementation for uniform mesh. 10 times faster than VERSION 2.0.
+Extend this idea to 3D case.
+
