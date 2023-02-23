@@ -9,7 +9,7 @@ REFERENCES  :
 
 ---
 
-## update at 2023/2/25
+## 2023/2/25
 
 Universal fast implementation for uniform mesh, 10 times faster than VERSION 2.0.
 
