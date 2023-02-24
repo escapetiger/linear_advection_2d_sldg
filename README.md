@@ -8,3 +8,6 @@ REFERENCES  :
 [1] X. Cai, W. Guo, J.-M. Qiu, A High Order Conservative Semi-Lagrangian Discontinuous Galerkin Method for Two-Dimensional Transport Simulations, J Sci Comput. 73 (2017) 514–542. https://doi.org/10.1007/s10915-017-0554-0.
 
 ---
+
+These codes are deprecated. The design of clipping algorithm is too complicate. We need to simplify local data structures.
+When ElemU overlaps ElemE, the program fails to capture the right results.
