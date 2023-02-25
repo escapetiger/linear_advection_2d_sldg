@@ -17,6 +17,7 @@ public:
     void Print(EdgeU &edge, std::ostream &out = std::cout);
     void Print(ElemU &elem, std::ostream &out = std::cout);
     void Print(SubElem &sub, std::ostream &out = std::cout);
+    void Print(SubEdge &sub, std::ostream &out = std::cout);
     void PrintNodeE(const char *file);
     void PrintEdgeE(const char *file);
     void PrintElemE(const char *file);

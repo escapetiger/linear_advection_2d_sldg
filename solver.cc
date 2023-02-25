@@ -2,20 +2,20 @@
 
 using mcm::DeleteMatrix;
 using mcm::DeleteVector;
+using mcm::FuzzyEQ;
+using mcm::FuzzyGE;
+using mcm::FuzzyGT;
+using mcm::FuzzyLE;
+using mcm::FuzzyLT;
+using mcm::FuzzyZero;
 using mcm::Index2D;
 using mcm::NewMatrix;
 using mcm::NewVector;
-using mcm::kernels::FuzzyEQ;
-using mcm::kernels::FuzzyGE;
-using mcm::kernels::FuzzyGT;
-using mcm::kernels::FuzzyLE;
-using mcm::kernels::FuzzyLT;
-using mcm::kernels::FuzzyZero;
-using mcm::kernels::RealGE;
-using mcm::kernels::RealGT;
-using mcm::kernels::RealLE;
-using mcm::kernels::RealLT;
-using mcm::kernels::Square;
+using mcm::RealGE;
+using mcm::RealGT;
+using mcm::RealLE;
+using mcm::RealLT;
+using mcm::Square;
 
 void Solver::ReadOptions(int argc, char const *argv[])
 {
@@ -422,6 +422,7 @@ void Solver::Destroy()
     DeleteVector<double>(v_XR_YL_2D, N_dof_loc);
     DeleteVector<double>(v_XL_YR_2D, N_dof_loc);
     DeleteVector<double>(v_XR_YR_2D, N_dof_loc);
+    DeleteMatrix<double>(mat_v_u_2D, N_dof_loc, N_dof_loc);
     DeleteVector<double>(U_tn, N_dof_glo);
     DeleteVector<double>(U_tn1, N_dof_glo);
     DeleteVector<double>(U_RHS, N_dof_glo);
@@ -496,40 +497,36 @@ int Solver::SetTimeStep(double t)
     return !FuzzyZero(ht - ht_old);
 }
 
+int Solver::FindParent(double x, double y)
+{
+    int jx, jy, par;
+    for (jx = 0; jx < Nx + 1; jx++)
+    {
+        if (FuzzyLT(x, x_grid[jx]))
+        {
+            break;
+        }
+    }
+    for (jy = 0; jy < Ny + 1; jy++)
+    {
+        if (FuzzyLT(y, y_grid[jy]))
+        {
+            break;
+        }
+    }
+    par = Index2D(jx - 1, jy - 1, Nx, Ny);
+    return (par < 0 || par > Nx * Ny) ? -1 : par;
+}
+
 void Solver::TrackBack()
 {
     // track NodeE to NodeU
-    int i, jx, jy, k;
+    int i, k;
     for (i = 0; i < N_node; i++)
     {
         node_u_buf[i].pos.x = node_e_buf[i].pos.x - ax * ht;
         node_u_buf[i].pos.y = node_e_buf[i].pos.y - ay * ht;
-
-        // periodic BC
-        // node_u[i].pos.x = Circulate(node_u[i].pos.x, xmin, xmax);
-        // node_u[i].pos.y = Circulate(node_u[i].pos.y, ymin, ymax);
-
-        for (jx = 0; jx < Nx + 1; jx++)
-        {
-            if (FuzzyLT(node_u_buf[i].pos.x, x_grid[jx]))
-            {
-                break;
-            }
-        }
-
-        for (jy = 0; jy < Ny + 1; jy++)
-        {
-            if (FuzzyLT(node_u_buf[i].pos.y, y_grid[jy]))
-            {
-                break;
-            }
-        }
-
-        node_u_buf[i].par = Index2D(jx - 1, jy - 1, Nx, Ny);
-        if (node_u_buf[i].par < 0 || node_u_buf[i].par >= Nx * Ny)
-        {
-            node_u_buf[i].par = -1;
-        }
+        node_u_buf[i].par = FindParent(node_u_buf[i].pos.x, node_u_buf[i].pos.y);
     }
 
     // track EdgeE to EdgeU
@@ -578,10 +575,10 @@ void Solver::Clipping()
 void Solver::ClipREF()
 {
     double x0, y0, x1, y1, rx, ry, x, y, dx, dy;
-    x0 = ref_buf.p0.x - ax * ht / hx;
-    y0 = ref_buf.p0.y - ay * ht / hy;
-    x1 = ref_buf.p1.x - ax * ht / hx;
-    y1 = ref_buf.p1.y - ay * ht / hy;
+    x0 = ref_elem_buf.p0.x - ax * ht / hx;
+    y0 = ref_elem_buf.p0.y - ay * ht / hy;
+    x1 = ref_elem_buf.p1.x - ax * ht / hx;
+    y1 = ref_elem_buf.p1.y - ay * ht / hy;
     // x0 = i*hx-a*ht, x1 = (i+1)*hx-a*ht;
     // xx0 = -a*ht/hx, xx1 = 1-a*ht/hx;
     // 1 = k+r, -1<r<1
@@ -594,72 +591,156 @@ void Solver::ClipREF()
     ry = fmod(y1, 1.);
     y = (ry < 0) ? -ry : 1. - ry;
 
-    ref_buf.poi.x = x;
-    ref_buf.poi.y = y;
+    ref_elem_buf.poi.x = x;
+    ref_elem_buf.poi.y = y;
 
     // add SubElems
-    ref_buf.nsub = 0;
-    x0 = ref_buf.p0.x;
-    y0 = ref_buf.p0.y;
-    x1 = ref_buf.p1.x;
-    y1 = ref_buf.p1.y;
+    ref_elem_buf.nsub = 0;
+    x0 = ref_elem_buf.p0.x;
+    y0 = ref_elem_buf.p0.y;
+    x1 = ref_elem_buf.p1.x;
+    y1 = ref_elem_buf.p1.y;
+    // std::cout << x0 << ' ' << y0 << ' ' << x1 << ' ' << y1 << '\n';
+    // std::cout << x << ' ' << y << '\n';
     // left bottom SubElem
     dx = fabs(x - x0);
     dy = fabs(y - y0);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        ref_buf.sub_buf[ref_buf.nsub].p0.x = x0;
-        ref_buf.sub_buf[ref_buf.nsub].p0.y = y0;
-        ref_buf.sub_buf[ref_buf.nsub].p1.x = x;
-        ref_buf.sub_buf[ref_buf.nsub].p1.y = y;
-        ref_buf.nsub++;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.x = x0;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.y = y0;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.x = x;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.y = y;
+        ref_elem_buf.nsub++;
     }
     // right bottom SubElem
     dx = fabs(x1 - x);
     dy = fabs(y - y0);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        ref_buf.sub_buf[ref_buf.nsub].p0.x = x;
-        ref_buf.sub_buf[ref_buf.nsub].p0.y = y0;
-        ref_buf.sub_buf[ref_buf.nsub].p1.x = x1;
-        ref_buf.sub_buf[ref_buf.nsub].p1.y = y;
-        ref_buf.nsub++;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.x = x;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.y = y0;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.x = x1;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.y = y;
+        ref_elem_buf.nsub++;
     }
     // right top SubElem
     dx = fabs(x1 - x);
     dy = fabs(y1 - y);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        ref_buf.sub_buf[ref_buf.nsub].p0.x = x;
-        ref_buf.sub_buf[ref_buf.nsub].p0.y = y;
-        ref_buf.sub_buf[ref_buf.nsub].p1.x = x1;
-        ref_buf.sub_buf[ref_buf.nsub].p1.y = y1;
-        ref_buf.nsub++;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.x = x;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.y = y;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.x = x1;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.y = y1;
+        ref_elem_buf.nsub++;
     }
     // left top SubElem
     dx = fabs(x - x0);
     dy = fabs(y1 - y);
     if (!(FuzzyZero(dx) || FuzzyZero(dy)))
     {
-        ref_buf.sub_buf[ref_buf.nsub].p0.x = x0;
-        ref_buf.sub_buf[ref_buf.nsub].p0.y = y;
-        ref_buf.sub_buf[ref_buf.nsub].p1.x = x;
-        ref_buf.sub_buf[ref_buf.nsub].p1.y = y1;
-        ref_buf.nsub++;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.x = x0;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p0.y = y;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.x = x;
+        ref_elem_buf.sub_buf[ref_elem_buf.nsub].p1.y = y1;
+        ref_elem_buf.nsub++;
+    }
+
+    // add SubEdges
+    // bottom edge
+    ref_edge_b_buf.nsub = 0;
+    dx = fabs(x - x0);
+    if (!(FuzzyZero(dx)))
+    {
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p0.x = x0;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p0.y = y0;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p1.x = x;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p1.y = y0;
+        ref_edge_b_buf.nsub++;
+    }
+    dx = fabs(x1 - x);
+    if (!(FuzzyZero(dx)))
+    {
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p0.x = x;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p0.y = y0;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p1.x = x1;
+        ref_edge_b_buf.sub_buf[ref_edge_b_buf.nsub].p1.y = y0;
+        ref_edge_b_buf.nsub++;
+    }
+    // right edge
+    ref_edge_r_buf.nsub = 0;
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dy)))
+    {
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p0.x = x1;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p0.y = y0;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p1.x = x1;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p1.y = y;
+        ref_edge_r_buf.nsub++;
+    }
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dy)))
+    {
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p0.x = x1;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p0.y = y;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p1.x = x1;
+        ref_edge_r_buf.sub_buf[ref_edge_r_buf.nsub].p1.y = y1;
+        ref_edge_r_buf.nsub++;
+    }
+    // top edge
+    ref_edge_t_buf.nsub = 0;
+    dx = fabs(x - x0);
+    if (!(FuzzyZero(dx)))
+    {
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p0.x = x0;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p0.y = y1;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p1.x = x;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p1.y = y1;
+        ref_edge_t_buf.nsub++;
+    }
+    dx = fabs(x1 - x);
+    if (!(FuzzyZero(dx)))
+    {
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p0.x = x;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p0.y = y1;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p1.x = x1;
+        ref_edge_t_buf.sub_buf[ref_edge_t_buf.nsub].p1.y = y1;
+        ref_edge_t_buf.nsub++;
+    }
+    // left edge
+    ref_edge_l_buf.nsub = 0;
+    dy = fabs(y - y0);
+    if (!(FuzzyZero(dy)))
+    {
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p0.x = x0;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p0.y = y0;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p1.x = x0;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p1.y = y;
+        ref_edge_l_buf.nsub++;
+    }
+    dy = fabs(y1 - y);
+    if (!(FuzzyZero(dy)))
+    {
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p0.x = x0;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p0.y = y;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p1.x = x0;
+        ref_edge_l_buf.sub_buf[ref_edge_l_buf.nsub].p1.y = y1;
+        ref_edge_l_buf.nsub++;
     }
 }
 
 void Solver::ClipElem(ElemU *elem_u)
 {
-    int i, jx, jy, k;
+    int i, j;
     double x0, y0, x1, y1, cx, cy, dx, dy, dxy;
-    // find parents
-    for (i = 0; i < ref_buf.nsub; i++)
+    // find SubElemUs' QuadRule
+    for (i = 0; i < ref_elem_buf.nsub; i++)
     {
-        x0 = elem_u->p0.x + ref_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_u->p0.y + ref_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_u->p0.x + ref_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_u->p0.y + ref_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_u->p0.x + ref_elem_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_elem_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_elem_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_elem_buf.sub_buf[i].p1.y * hy;
         dx = fabs(x1 - x0);
         dy = fabs(y1 - y0);
         dxy = dx * dy;
@@ -668,34 +749,121 @@ void Solver::ClipElem(ElemU *elem_u)
         cx = Circulate(cx, xmin, xmax);
         cy = Circulate(cy, ymin, ymax);
 
-        for (jx = 0; jx < Nx + 1; jx++)
-        {
-            if (FuzzyLT(cx, x_grid[jx]))
-            {
-                break;
-            }
-        }
-
-        for (jy = 0; jy < Ny + 1; jy++)
-        {
-            if (FuzzyLT(cy, y_grid[jy]))
-            {
-                break;
-            }
-        }
-
-        elem_u->qr.par_buf[i] = Index2D(jx - 1, jy - 1, Nx, Ny);
-
-        for (k = 0; k < N_GL_2D; k++)
+        elem_u->qr.par_buf[i] = FindParent(cx, cy);
+        for (j = 0; j < N_GL_2D; j++)
         {
             // This is for periodic BC
-            elem_u->qr.qp_buf[i][k].x = Circulate(x0 + dx * x_GL_2D[k], xmin, xmax);
-            elem_u->qr.qp_buf[i][k].y = Circulate(y0 + dy * y_GL_2D[k], xmin, xmax);
+            elem_u->qr.qp_buf[i][j].x = Circulate(x0 + dx * x_GL_2D[j], xmin, xmax);
+            elem_u->qr.qp_buf[i][j].y = Circulate(y0 + dy * y_GL_2D[j], ymin, ymax);
 
             // This is for other BC
             // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
             // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
-            elem_u->qr.qp_buf[i][k].w = w_GL_2D[k] * dxy;
+            elem_u->qr.qp_buf[i][j].w = w_GL_2D[j] * dxy;
+        }
+    }
+
+    // find bottom SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_b_buf.nsub; i++)
+    {
+        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        cx = (x0 + x1) / 2.;
+        cy = (y0 + y1) / 2.;
+        cx = Circulate(cx, xmin, xmax);
+        cy = Circulate(cy, ymin, ymax);
+        elem_u->qr_b.par_buf[i] = FindParent(cx, cy);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            // This is for periodic BC
+            elem_u->qr_b.qp_buf[i][j].x = Circulate(x0 + dx * x_GL_1D[j], xmin, xmax);
+            elem_u->qr_b.qp_buf[i][j].y = Circulate(y0, ymin, ymax);
+
+            // This is for other BC
+            // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
+            // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
+            elem_u->qr_b.qp_buf[i][j].w = w_GL_1D[j] * dx;
+        }
+    }
+
+    // find right SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    {
+        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dy = fabs(y1 - y0);
+        cx = (x0 + x1) / 2.;
+        cy = (y0 + y1) / 2.;
+        cx = Circulate(cx, xmin, xmax);
+        cy = Circulate(cy, ymin, ymax);
+        elem_u->qr_r.par_buf[i] = FindParent(cx, cy);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            // This is for periodic BC
+            elem_u->qr_r.qp_buf[i][j].x = Circulate(x1, xmin, xmax);
+            elem_u->qr_r.qp_buf[i][j].y = Circulate(y0 + dy * x_GL_1D[j], ymin, ymax);
+
+            // This is for other BC
+            // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
+            // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
+            elem_u->qr_r.qp_buf[i][j].w = w_GL_1D[j] * dy;
+        }
+    }
+
+    // find top SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_t_buf.nsub; i++)
+    {
+        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        cx = (x0 + x1) / 2.;
+        cy = (y0 + y1) / 2.;
+        cx = Circulate(cx, xmin, xmax);
+        cy = Circulate(cy, ymin, ymax);
+        elem_u->qr_t.par_buf[i] = FindParent(cx, cy);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            // This is for periodic BC
+            elem_u->qr_t.qp_buf[i][j].x = Circulate(x0 + dx * x_GL_1D[j], xmin, xmax);
+            elem_u->qr_t.qp_buf[i][j].y = Circulate(y1, ymin, ymax);
+
+            // This is for other BC
+            // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
+            // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
+            elem_u->qr_t.qp_buf[i][j].w = w_GL_1D[j] * dx;
+        }
+    }
+
+    // find left SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    {
+        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dy = fabs(y1 - y0);
+        cx = (x0 + x1) / 2.;
+        cy = (y0 + y1) / 2.;
+        cx = Circulate(cx, xmin, xmax);
+        cy = Circulate(cy, ymin, ymax);
+        elem_u->qr_l.par_buf[i] = FindParent(cx, cy);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            // This is for periodic BC
+            elem_u->qr_l.qp_buf[i][j].x = Circulate(x0, xmin, xmax);
+            elem_u->qr_l.qp_buf[i][j].y = Circulate(y0 + dy * x_GL_1D[j], ymin, ymax);
+
+            // This is for other BC
+            // elem_u->qr.qp_buf[i][k].x = x0 + dx * x_GL_2D[k];
+            // elem_u->qr.qp_buf[i][k].y = y0 + dy * y_GL_2D[k];
+            elem_u->qr_l.qp_buf[i][j].w = w_GL_1D[j] * dy;
         }
     }
 }
@@ -704,12 +872,13 @@ void Solver::ClipElem(ElemE *elem_e)
 {
     int i, j;
     double x0, y0, x1, y1, dx, dy, dxy;
-    for (i = 0; i < ref_buf.nsub; i++)
+    // find SubElemUs' QuadRule
+    for (i = 0; i < ref_elem_buf.nsub; i++)
     {
-        x0 = elem_e->p0.x + ref_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_e->p0.y + ref_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_e->p0.x + ref_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_e->p0.y + ref_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_e->p0.x + ref_elem_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_elem_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_elem_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_elem_buf.sub_buf[i].p1.y * hy;
         dx = fabs(x1 - x0);
         dy = fabs(y1 - y0);
         dxy = dx * dy;
@@ -720,34 +889,99 @@ void Solver::ClipElem(ElemE *elem_e)
             elem_e->qr.qp_buf[i][j].w = w_GL_2D[j] * dxy;
         }
     }
+
+    // find bottom SubEdgeEs' QuadRule
+    for (i = 0; i < ref_edge_b_buf.nsub; i++)
+    {
+        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            elem_e->qr_b.qp_buf[i][j].x = x0 + dx * x_GL_1D[j];
+            elem_e->qr_b.qp_buf[i][j].y = y0;
+            elem_e->qr_b.qp_buf[i][j].w = w_GL_1D[j] * dx;
+        }
+    }
+
+    // find right SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    {
+        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dy = fabs(y1 - y0);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            elem_e->qr_r.qp_buf[i][j].x = x1;
+            elem_e->qr_r.qp_buf[i][j].y = y0 + dy * x_GL_1D[j];
+            elem_e->qr_r.qp_buf[i][j].w = w_GL_1D[j] * dy;
+        }
+    }
+
+    // find top SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_t_buf.nsub; i++)
+    {
+        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dx = fabs(x1 - x0);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            elem_e->qr_t.qp_buf[i][j].x = x0 + dx * x_GL_1D[j];
+            elem_e->qr_t.qp_buf[i][j].y = y1;
+            elem_e->qr_t.qp_buf[i][j].w = w_GL_1D[j] * dx;
+        }
+    }
+
+    // find left SubEdgeUs' QuadRule
+    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    {
+        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        dy = fabs(y1 - y0);
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            elem_e->qr_l.qp_buf[i][j].x = x0;
+            elem_e->qr_l.qp_buf[i][j].y = y0 + dy * x_GL_1D[j];
+            elem_e->qr_l.qp_buf[i][j].w = w_GL_1D[j] * dy;
+        }
+    }
 }
 
 void Solver::MakeQuadRuleREF()
 {
+    const double lim_eps = 1e-3;
     int i, j, k;
-    double x0, y0;
+    double x0, y0, x[2], n[2];
     ElemE *elem_e = &elem_e_buf[0];
     ElemU *elem_u = &elem_u_buf[0];
-    for (i = 0; i < ref_buf.nsub; i++)
+    for (i = 0; i < ref_elem_buf.nsub; i++)
     {
         // reference QuadRule for ElemE
         x0 = elem_e->p0.x;
         y0 = elem_e->p0.y;
         for (j = 0; j < N_GL_2D; j++)
         {
-            ref_buf.qp_e_buf[i][j].x = (elem_e->qr.qp_buf[i][j].x - x0) / hx;
-            ref_buf.qp_e_buf[i][j].y = (elem_e->qr.qp_buf[i][j].y - y0) / hy;
-            ref_buf.qp_e_buf[i][j].w = elem_e->qr.qp_buf[i][j].w / (hx * hy);
+            ref_elem_buf.qp_e_buf[i][j].x = (elem_e->qr.qp_buf[i][j].x - x0) / hx;
+            ref_elem_buf.qp_e_buf[i][j].y = (elem_e->qr.qp_buf[i][j].y - y0) / hy;
+            ref_elem_buf.qp_e_buf[i][j].w = elem_e->qr.qp_buf[i][j].w / (hx * hy);
         }
 
         // reference QuadRule for ElemU
         x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
-        y0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
         for (j = 0; j < N_GL_2D; j++)
         {
-            ref_buf.qp_u_buf[i][j].x = (elem_u->qr.qp_buf[i][j].x - x0) / hx;
-            ref_buf.qp_u_buf[i][j].y = (elem_u->qr.qp_buf[i][j].y - y0) / hy;
-            ref_buf.qp_u_buf[i][j].w = elem_u->qr.qp_buf[i][j].w / (hx * hy);
+            ref_elem_buf.qp_u_buf[i][j].x = (elem_u->qr.qp_buf[i][j].x - x0) / hx;
+            ref_elem_buf.qp_u_buf[i][j].y = (elem_u->qr.qp_buf[i][j].y - y0) / hy;
+            ref_elem_buf.qp_u_buf[i][j].w = elem_u->qr.qp_buf[i][j].w / (hx * hy);
         }
 
         // reference basis values for ElemE
@@ -755,7 +989,7 @@ void Solver::MakeQuadRuleREF()
         {
             for (k = 0; k < N_GL_2D; k++)
             {
-                ref_buf.v_qp_e_buf[i][j][k] = CalcPkBasis(2, P, j, ref_buf.qp_e_buf[i][k].xy);
+                ref_elem_buf.v_qp_e_buf[i][j][k] = CalcPkBasis(2, P, j, ref_elem_buf.qp_e_buf[i][k].xy);
             }
         }
 
@@ -764,7 +998,207 @@ void Solver::MakeQuadRuleREF()
         {
             for (k = 0; k < N_GL_2D; k++)
             {
-                ref_buf.v_qp_u_buf[i][j][k] = CalcPkBasis(2, P, j, ref_buf.qp_u_buf[i][k].xy);
+                ref_elem_buf.v_qp_u_buf[i][j][k] = CalcPkBasis(2, P, j, ref_elem_buf.qp_u_buf[i][k].xy);
+            }
+        }
+    }
+
+    n[1] = -1.;
+    for (i = 0; i < ref_edge_b_buf.nsub; i++)
+    {
+        // reference QuadRule for bottom EdgeE
+        x0 = elem_e->p0.x;
+        y0 = elem_e->p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_b_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_b_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_b_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hx;
+        }
+
+        // reference QuadRule for bottom EdgeU
+        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_b_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_b_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_b_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / hx;
+        }
+
+        // reference basis values for bottom EdgeE
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_b_buf.qp_e_buf[i][k].x;
+                x[1] = Circulate(ref_edge_b_buf.qp_e_buf[i][k].y + n[1] * lim_eps, 0., 1.);
+                ref_edge_b_buf.v_qp_e_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_b_buf.qp_e_buf[i][k].y - n[1] * lim_eps, 0., 1.);
+                ref_edge_b_buf.v_qp_e_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+
+        // reference basis values for bottom EdgeU
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_b_buf.qp_u_buf[i][k].x;
+                x[1] = Circulate(ref_edge_b_buf.qp_u_buf[i][k].y + n[1] * lim_eps, 0., 1.);
+                ref_edge_b_buf.v_qp_u_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_b_buf.qp_u_buf[i][k].y - n[1] * lim_eps, 0., 1.);
+                ref_edge_b_buf.v_qp_u_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+    }
+
+    n[0] = 1.;
+    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    {
+        // reference QuadRule for right EdgeE
+        x0 = elem_e->p0.x;
+        y0 = elem_e->p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_r_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_r_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_r_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hy;
+        }
+
+        // reference QuadRule for right EdgeU
+        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_r_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_r_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_r_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / hy;
+        }
+
+        // reference basis values for right EdgeE
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = Circulate(ref_edge_r_buf.qp_e_buf[i][k].x + n[0] * lim_eps, 0., 1.);
+                x[1] = ref_edge_r_buf.qp_e_buf[i][k].y;
+                ref_edge_r_buf.v_qp_e_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[0] = Circulate(ref_edge_r_buf.qp_e_buf[i][k].x - n[0] * lim_eps, 0., 1.);
+                ref_edge_r_buf.v_qp_e_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+
+        // reference basis values for right EdgeU
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_r_buf.qp_u_buf[i][k].x;
+                x[1] = Circulate(ref_edge_r_buf.qp_u_buf[i][k].y + n[0] * lim_eps, 0., 1.);
+                ref_edge_r_buf.v_qp_u_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_r_buf.qp_u_buf[i][k].y - n[0] * lim_eps, 0., 1.);
+                ref_edge_r_buf.v_qp_u_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+    }
+
+    n[1] = 1.;
+    for (i = 0; i < ref_edge_t_buf.nsub; i++)
+    {
+        // reference QuadRule for top EdgeE
+        x0 = elem_e->p0.x;
+        y0 = elem_e->p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_t_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_t_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_t_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hx;
+        }
+
+        // reference QuadRule for top EdgeU
+        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_t_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_t_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_t_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / (hx * hy);
+        }
+
+        // reference basis values for top EdgeE
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_t_buf.qp_e_buf[i][k].x;
+                x[1] = Circulate(ref_edge_t_buf.qp_e_buf[i][k].y + n[1] * lim_eps, 0., 1.);
+                ref_edge_t_buf.v_qp_e_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_t_buf.qp_e_buf[i][k].y - n[1] * lim_eps, 0., 1.);
+                ref_edge_t_buf.v_qp_e_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+
+        // reference basis values for top EdgeU
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_t_buf.qp_u_buf[i][k].x;
+                x[1] = Circulate(ref_edge_t_buf.qp_u_buf[i][k].y + n[1] * lim_eps, 0., 1.);
+                ref_edge_t_buf.v_qp_u_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_t_buf.qp_u_buf[i][k].y - n[1] * lim_eps, 0., 1.);
+                ref_edge_t_buf.v_qp_u_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+    }
+
+    n[0] = -1.;
+    for (i = 0; i < ref_edge_l_buf.nsub; i++)
+    {
+        // reference QuadRule for left EdgeE
+        x0 = elem_e->p0.x;
+        y0 = elem_e->p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_l_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_l_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_l_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hy;
+        }
+
+        // reference QuadRule for left EdgeU
+        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        for (j = 0; j < N_GL_1D; j++)
+        {
+            ref_edge_l_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
+            ref_edge_l_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
+            ref_edge_l_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / hy;
+        }
+
+        // reference basis values for left EdgeE
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = Circulate(ref_edge_l_buf.qp_e_buf[i][k].x + n[0] * lim_eps, 0., 1.);
+                x[1] = ref_edge_l_buf.qp_e_buf[i][k].y;
+                ref_edge_l_buf.v_qp_e_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[0] = Circulate(ref_edge_l_buf.qp_e_buf[i][k].x - n[0] * lim_eps, 0., 1.);
+                ref_edge_l_buf.v_qp_e_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
+            }
+        }
+
+        // reference basis values for left EdgeU
+        for (j = 0; j < N_dof_loc; j++)
+        {
+            for (k = 0; k < N_GL_1D; k++)
+            {
+                x[0] = ref_edge_l_buf.qp_u_buf[i][k].x;
+                x[1] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].y + n[0] * lim_eps, 0., 1.);
+                ref_edge_l_buf.v_qp_u_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
+                x[1] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].y - n[0] * lim_eps, 0., 1.);
+                ref_edge_l_buf.v_qp_u_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
             }
         }
     }
@@ -780,7 +1214,7 @@ void Solver::Assemble()
         {
             jg = Index2D(i, j, N_elem, N_dof_loc);
             mass = hx * hy * mat_v_u_2D[j][j];
-            for (l = 0; l < ref_buf.nsub; l++)
+            for (l = 0; l < ref_elem_buf.nsub; l++)
             {
                 for (m = 0; m < N_GL_2D; m++)
                 {
@@ -798,17 +1232,15 @@ void Solver::Assemble()
                     U_RHS[jg] += qe->w * u * v / mass;
 #else
                     u = 0.;
-                    v = ref_buf.v_qp_e_buf[l][j][m];
+                    v = ref_elem_buf.v_qp_e_buf[l][j][m];
                     for (k = 0; k < N_dof_loc; k++)
                     {
                         udof = elem_e_buf[elem_u_buf[i].qr.par_buf[l]].udof[k];
-                        u += udof * ref_buf.v_qp_u_buf[l][k][m];
+                        u += udof * ref_elem_buf.v_qp_u_buf[l][k][m];
                     }
                     u *= hx * hy;
-                    U_RHS[jg] += ref_buf.qp_e_buf[l][m].w * u * v / mass;
+                    U_RHS[jg] += ref_elem_buf.qp_e_buf[l][m].w * u * v / mass;
 #endif
-                    // std::cout << std::fixed << std::setprecision(8);
-                    // std::cout << i << ' ' << j << ' ' << u << ' ' << v << ' ' << qe->w << '\n';
                 }
             }
         }

@@ -4,10 +4,6 @@
 #include "globals.h"
 #include "kernels.h"
 
-
-
-/** Solve u_t + a*u_x + b*u_y = 0 */
-
 typedef struct
 {
     double xmin = 0.; ///< minimum value of x
@@ -71,16 +67,20 @@ public:
     double **mat_v_u_2D; ///< DG matrix: v*u
 
     // local data structures
-    int N_node;        ///< number of nodes
-    int N_edge;        ///< number of edges
-    int N_elem;        ///< number of elements
-    NodeE *node_e_buf; ///< global Eulerian node buffer
-    NodeU *node_u_buf; ///< global Upstream node buffer
-    EdgeE *edge_e_buf; ///< global Eulerian edge buffer
-    EdgeU *edge_u_buf; ///< global Upstream edge buffer
-    ElemE *elem_e_buf; ///< global Eulerian element buffer
-    ElemU *elem_u_buf; ///< global Upstream element buffer
-    ElemR ref_buf;     ///< global Reference element buffer
+    int N_node;             ///< number of nodes
+    int N_edge;             ///< number of edges
+    int N_elem;             ///< number of elements
+    NodeE *node_e_buf;      ///< global Eulerian node buffer
+    NodeU *node_u_buf;      ///< global Upstream node buffer
+    EdgeE *edge_e_buf;      ///< global Eulerian edge buffer
+    EdgeU *edge_u_buf;      ///< global Upstream edge buffer
+    ElemE *elem_e_buf;      ///< global Eulerian element buffer
+    ElemU *elem_u_buf;      ///< global Upstream element buffer
+    ElemR ref_elem_buf;     ///< global Reference element buffer
+    EdgeR_B ref_edge_b_buf; ///< global Reference bottom edge buffer
+    EdgeR_R ref_edge_r_buf; ///< global Reference right edge buffer
+    EdgeR_T ref_edge_t_buf; ///< global Reference top edge buffer
+    EdgeR_L ref_edge_l_buf; ///< global Reference left edge buffer
 
     // global algebraic elements: vectors and matrices
     int N_dof_glo; ///< number of global degrees freedom
@@ -112,6 +112,7 @@ private:
     double ExactData(double t, double x, double y);
     void Project();
     int SetTimeStep(double t);
+    int FindParent(double x, double y);
     void TrackBack();
     void Assemble();
     void Clipping();

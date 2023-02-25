@@ -7,8 +7,8 @@ void RunSolver(SolverOptions *opt, double *e);
 
 int main(int argc, char const *argv[])
 {
-    ErrorOrder();
-    // Debug(argc, argv);
+    // ErrorOrder();
+    Debug(argc, argv);
 }
 
 void Debug(int argc, char const *argv[])
@@ -95,8 +95,8 @@ void ErrorOrder()
         opt[i].ymax = 1.;           ///< maximum value of y
         opt[i].tmax = 1.0;          ///< final simulation time
         opt[i].CFL = 1.0;           ///< CFL number
-        opt[i].ax = 1.;            ///< wave speed in x
-        opt[i].ay = 1.;            ///< wave speed in y
+        opt[i].ax = 1.e6;            ///< wave speed in x
+        opt[i].ay = 1.e6;            ///< wave speed in y
         opt[i].Nx = 10 * pow(2, i); ///< size of x-partition
         opt[i].Ny = opt[i].Nx;      ///< size of y-partition
         opt[i].order = 5;           ///< approximation order of numerical scheme
