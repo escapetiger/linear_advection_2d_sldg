@@ -939,7 +939,7 @@ void Solver::ClipElem(ElemE *elem_e)
     }
 
     // find left SubEdgeUs' QuadRule
-    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    for (i = 0; i < ref_edge_l_buf.nsub; i++)
     {
         x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
         y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
