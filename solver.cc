@@ -515,7 +515,7 @@ int Solver::FindParent(double x, double y)
         }
     }
     par = Index2D(jx - 1, jy - 1, Nx, Ny);
-    return (par < 0 || par > Nx * Ny) ? -1 : par;
+    return (par < 0 || par > Nx * Ny - 1) ? -1 : par;
 }
 
 void Solver::TrackBack()
@@ -792,10 +792,10 @@ void Solver::ClipElem(ElemU *elem_u)
     // find right SubEdgeUs' QuadRule
     for (i = 0; i < ref_edge_r_buf.nsub; i++)
     {
-        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_u->p0.x + ref_edge_r_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_r_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_r_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_r_buf.sub_buf[i].p1.y * hy;
         dy = fabs(y1 - y0);
         cx = (x0 + x1) / 2.;
         cy = (y0 + y1) / 2.;
@@ -818,10 +818,10 @@ void Solver::ClipElem(ElemU *elem_u)
     // find top SubEdgeUs' QuadRule
     for (i = 0; i < ref_edge_t_buf.nsub; i++)
     {
-        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_u->p0.x + ref_edge_t_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_t_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_t_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_t_buf.sub_buf[i].p1.y * hy;
         dx = fabs(x1 - x0);
         cx = (x0 + x1) / 2.;
         cy = (y0 + y1) / 2.;
@@ -842,12 +842,12 @@ void Solver::ClipElem(ElemU *elem_u)
     }
 
     // find left SubEdgeUs' QuadRule
-    for (i = 0; i < ref_edge_r_buf.nsub; i++)
+    for (i = 0; i < ref_edge_l_buf.nsub; i++)
     {
-        x0 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_u->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_u->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_u->p0.x + ref_edge_l_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_u->p0.y + ref_edge_l_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_u->p0.x + ref_edge_l_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_u->p0.y + ref_edge_l_buf.sub_buf[i].p1.y * hy;
         dy = fabs(y1 - y0);
         cx = (x0 + x1) / 2.;
         cy = (y0 + y1) / 2.;
@@ -909,10 +909,10 @@ void Solver::ClipElem(ElemE *elem_e)
     // find right SubEdgeUs' QuadRule
     for (i = 0; i < ref_edge_r_buf.nsub; i++)
     {
-        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_e->p0.x + ref_edge_r_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_r_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_r_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_r_buf.sub_buf[i].p1.y * hy;
         dy = fabs(y1 - y0);
         for (j = 0; j < N_GL_1D; j++)
         {
@@ -925,10 +925,10 @@ void Solver::ClipElem(ElemE *elem_e)
     // find top SubEdgeUs' QuadRule
     for (i = 0; i < ref_edge_t_buf.nsub; i++)
     {
-        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_e->p0.x + ref_edge_t_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_t_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_t_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_t_buf.sub_buf[i].p1.y * hy;
         dx = fabs(x1 - x0);
         for (j = 0; j < N_GL_1D; j++)
         {
@@ -941,10 +941,10 @@ void Solver::ClipElem(ElemE *elem_e)
     // find left SubEdgeUs' QuadRule
     for (i = 0; i < ref_edge_l_buf.nsub; i++)
     {
-        x0 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p0.x * hx;
-        y0 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p0.y * hy;
-        x1 = elem_e->p0.x + ref_edge_b_buf.sub_buf[i].p1.x * hx;
-        y1 = elem_e->p0.y + ref_edge_b_buf.sub_buf[i].p1.y * hy;
+        x0 = elem_e->p0.x + ref_edge_l_buf.sub_buf[i].p0.x * hx;
+        y0 = elem_e->p0.y + ref_edge_l_buf.sub_buf[i].p0.y * hy;
+        x1 = elem_e->p0.x + ref_edge_l_buf.sub_buf[i].p1.x * hx;
+        y1 = elem_e->p0.y + ref_edge_l_buf.sub_buf[i].p1.y * hy;
         dy = fabs(y1 - y0);
         for (j = 0; j < N_GL_1D; j++)
         {
@@ -1017,8 +1017,8 @@ void Solver::MakeQuadRuleREF()
         }
 
         // reference QuadRule for bottom EdgeU
-        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
-        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        x0 = elem_e[elem_u->qr_b.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr_b.par_buf[i]].p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
             ref_edge_b_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
@@ -1061,19 +1061,19 @@ void Solver::MakeQuadRuleREF()
         y0 = elem_e->p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_r_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_r_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_r_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hy;
+            ref_edge_r_buf.qp_e_buf[i][j].x = (elem_e->qr_r.qp_buf[i][j].x - x0) / hx;
+            ref_edge_r_buf.qp_e_buf[i][j].y = (elem_e->qr_r.qp_buf[i][j].y - y0) / hy;
+            ref_edge_r_buf.qp_e_buf[i][j].w = elem_e->qr_r.qp_buf[i][j].w / hy;
         }
 
         // reference QuadRule for right EdgeU
-        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
-        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        x0 = elem_e[elem_u->qr_r.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr_r.par_buf[i]].p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_r_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_r_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_r_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / hy;
+            ref_edge_r_buf.qp_u_buf[i][j].x = (elem_u->qr_r.qp_buf[i][j].x - x0) / hx;
+            ref_edge_r_buf.qp_u_buf[i][j].y = (elem_u->qr_r.qp_buf[i][j].y - y0) / hy;
+            ref_edge_r_buf.qp_u_buf[i][j].w = elem_u->qr_r.qp_buf[i][j].w / hy;
         }
 
         // reference basis values for right EdgeE
@@ -1111,19 +1111,19 @@ void Solver::MakeQuadRuleREF()
         y0 = elem_e->p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_t_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_t_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_t_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hx;
+            ref_edge_t_buf.qp_e_buf[i][j].x = (elem_e->qr_t.qp_buf[i][j].x - x0) / hx;
+            ref_edge_t_buf.qp_e_buf[i][j].y = (elem_e->qr_t.qp_buf[i][j].y - y0) / hy;
+            ref_edge_t_buf.qp_e_buf[i][j].w = elem_e->qr_t.qp_buf[i][j].w / hx;
         }
 
         // reference QuadRule for top EdgeU
-        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
-        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        x0 = elem_e[elem_u->qr_t.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr_t.par_buf[i]].p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_t_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_t_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_t_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / (hx * hy);
+            ref_edge_t_buf.qp_u_buf[i][j].x = (elem_u->qr_t.qp_buf[i][j].x - x0) / hx;
+            ref_edge_t_buf.qp_u_buf[i][j].y = (elem_u->qr_t.qp_buf[i][j].y - y0) / hy;
+            ref_edge_t_buf.qp_u_buf[i][j].w = elem_u->qr_t.qp_buf[i][j].w / hx;
         }
 
         // reference basis values for top EdgeE
@@ -1161,19 +1161,19 @@ void Solver::MakeQuadRuleREF()
         y0 = elem_e->p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_l_buf.qp_e_buf[i][j].x = (elem_e->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_l_buf.qp_e_buf[i][j].y = (elem_e->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_l_buf.qp_e_buf[i][j].w = elem_e->qr_b.qp_buf[i][j].w / hy;
+            ref_edge_l_buf.qp_e_buf[i][j].x = (elem_e->qr_l.qp_buf[i][j].x - x0) / hx;
+            ref_edge_l_buf.qp_e_buf[i][j].y = (elem_e->qr_l.qp_buf[i][j].y - y0) / hy;
+            ref_edge_l_buf.qp_e_buf[i][j].w = elem_e->qr_l.qp_buf[i][j].w / hy;
         }
 
         // reference QuadRule for left EdgeU
-        x0 = elem_e[elem_u->qr.par_buf[i]].p0.x;
-        y0 = elem_e[elem_u->qr.par_buf[i]].p0.y;
+        x0 = elem_e[elem_u->qr_l.par_buf[i]].p0.x;
+        y0 = elem_e[elem_u->qr_l.par_buf[i]].p0.y;
         for (j = 0; j < N_GL_1D; j++)
         {
-            ref_edge_l_buf.qp_u_buf[i][j].x = (elem_u->qr_b.qp_buf[i][j].x - x0) / hx;
-            ref_edge_l_buf.qp_u_buf[i][j].y = (elem_u->qr_b.qp_buf[i][j].y - y0) / hy;
-            ref_edge_l_buf.qp_u_buf[i][j].w = elem_u->qr_b.qp_buf[i][j].w / hy;
+            ref_edge_l_buf.qp_u_buf[i][j].x = (elem_u->qr_l.qp_buf[i][j].x - x0) / hx;
+            ref_edge_l_buf.qp_u_buf[i][j].y = (elem_u->qr_l.qp_buf[i][j].y - y0) / hy;
+            ref_edge_l_buf.qp_u_buf[i][j].w = elem_u->qr_l.qp_buf[i][j].w / hy;
         }
 
         // reference basis values for left EdgeE
