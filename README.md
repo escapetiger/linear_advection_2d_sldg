@@ -24,4 +24,3 @@ Extend this idea to 3D case.
 
 ## 2023/3/2
 Fix serveral bugs. Add SubEdge clipping algorithm.
-
