@@ -1194,10 +1194,10 @@ void Solver::MakeQuadRuleREF()
         {
             for (k = 0; k < N_GL_1D; k++)
             {
-                x[0] = ref_edge_l_buf.qp_u_buf[i][k].x;
-                x[1] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].y + n[0] * lim_eps, 0., 1.);
+                x[0] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].x + n[0] * lim_eps, 0., 1.);
+                x[1] = ref_edge_l_buf.qp_u_buf[i][k].x;
                 ref_edge_l_buf.v_qp_u_buf[i][j][k][0] = CalcPkBasis(2, P, j, x);
-                x[1] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].y - n[0] * lim_eps, 0., 1.);
+                x[0] = Circulate(ref_edge_l_buf.qp_u_buf[i][k].x - n[0] * lim_eps, 0., 1.);
                 ref_edge_l_buf.v_qp_u_buf[i][j][k][1] = CalcPkBasis(2, P, j, x);
             }
         }
