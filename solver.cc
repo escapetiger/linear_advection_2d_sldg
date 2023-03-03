@@ -957,7 +957,7 @@ void Solver::ClipElem(ElemE *elem_e)
 
 void Solver::MakeQuadRuleREF()
 {
-    const double lim_eps = 1e-3;
+    const double lim_eps = 1e-8;
     int i, j, k;
     double x0, y0, x[2], n[2];
     ElemE *elem_e = &elem_e_buf[0];
